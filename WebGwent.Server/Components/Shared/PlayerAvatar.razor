@@ -1,0 +1,25 @@
+@if (ResolvedCustom)
+{
+    <img src="@AvatarCatalog.ImageUrl(ResolvedAccountId!.Value, ResolvedVersion)"
+         alt=""
+         class="@CssClass avatar-img"
+         width="@Size"
+         height="@Size" />
+}
+else
+{
+    <span class="@CssClass" aria-hidden="true">@AvatarCatalog.Glyph(ResolvedAvatarId)</span>
+}
+
+@code {
+    [Parameter] public PlayerAccount? Account { get; set; }
+    [Parameter] public BoardProfile? Profile { get; set; }
+    [Parameter] public string CssClass { get; set; } = "nav-avatar";
+    [Parameter] public int Size { get; set; } = 24;
+
+    private Guid? ResolvedAccountId => Account?.Id ?? Profile?.AccountId;
+    private string? ResolvedAvatarId => Account?.AvatarId ?? Profile?.AvatarId;
+    private long ResolvedVersion => Account?.AvatarVersion ?? Profile?.AvatarVersion ?? 0;
+    private bool ResolvedCustom =>
+        AvatarCatalog.IsCustom(ResolvedAvatarId) && ResolvedAccountId is not null;
+}

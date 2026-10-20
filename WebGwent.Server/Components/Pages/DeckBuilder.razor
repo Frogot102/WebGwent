@@ -1,0 +1,278 @@
+@page "/decks/builder"
+@page "/decks/builder/{DeckId:guid}"
+@rendermode InteractiveServer
+@inject GameSessionManager Sessions
+@inject LocaleService Loc
+@inject NavigationManager Nav
+@implements IDisposable
+
+<PageTitle>WebGwent — @Loc.T("builder.title")</PageTitle>
+
+<section class="builder-page" @onclick="CloseDropdowns">
+    <header class="builder-header">
+        <div>
+            <h1>@Loc.T("builder.title")</h1>
+            <p class="lede">@Loc.T("builder.lede", DeckValidator.MinUnitCards, DeckValidator.MaxSpecialCards)</p>
+        </div>
+        <div class="builder-actions">
+            <a class="btn ghost" href="/decks">@Loc.T("builder.back")</a>
+            <button class="btn" @onclick="LoadPreset">@Loc.T("builder.fromPreset")</button>
+            <button class="btn primary" disabled="@(!_canSave)" @onclick="Save">@Loc.T("builder.save")</button>
+        </div>
+    </header>
+
+    @if (!string.IsNullOrEmpty(_message))
+    {
+        <div class="@(_messageOk ? "ok" : "error-banner")" style="margin-bottom:1rem">@_message</div>
+    }
+
+    <div class="builder-grid">
+        <aside class="builder-side">
+            <label>@Loc.T("builder.name")
+                <input @bind="_name" maxlength="40" />
+            </label>
+            <label>@Loc.T("online.faction")
+                <BoundSelect TItem="Faction"
+                             TValue="Faction"
+                             Options="Factions"
+                             Value="_faction"
+                             ValueChanged="OnFactionPicked"
+                             ValueSelector="f => f"
+                             TitleSelector="f => Loc.FactionName(f)"
+                             @ref="_factionSelect" />
+            </label>
+            <label>@Loc.T("decks.leader")
+                <BoundSelect TItem="CardDefinition"
+                             TValue="string"
+                             Options="Leaders"
+                             Value="_leaderId"
+                             ValueChanged="OnLeaderPicked"
+                             ValueSelector="l => l.Id"
+                             TitleSelector="l => Loc.CardName(l.Name)"
+                             @ref="_leaderSelect" />
+            </label>
+
+            <div class="builder-stats">
+                <div>@Loc.T("builder.units"): <strong>@_unitCount</strong> / @DeckValidator.MinUnitCards+</div>
+                <div>@Loc.T("builder.specials"): <strong>@_specialCount</strong> / @DeckValidator.MaxSpecialCards</div>
+                <div>@Loc.T("decks.cards", _cardIds.Count)</div>
+            </div>
+
+            <div class="@(_validation.IsValid ? "ok" : "bad")">
+                @if (_validation.IsValid)
+                {
+                    <span>@Loc.T("decks.valid")</span>
+                }
+                else
+                {
+                    <ul class="builder-errors">
+                        @foreach (var err in _validation.Errors)
+                        {
+                            <li>@err</li>
+                        }
+                    </ul>
+                }
+            </div>
+
+            <h3>@Loc.T("builder.yourDeck")</h3>
+            <ul class="card-table builder-deck-list">
+                @foreach (var group in DeckGroups)
+                {
+                    var c = group.First();
+                    <li class="card-row-item">
+                        <span class="col-str">@(c.Type == CardType.Unit ? c.Strength.ToString() : "—")</span>
+                        <span class="col-name" title="@Loc.CardName(c.Name)">@Loc.CardName(c.Name)</span>
+                        <span class="col-qty">×@group.Count()</span>
+                        <button type="button" class="btn ghost tiny col-action" @onclick="() => RemoveOne(c.Name)" aria-label="remove">−</button>
+                    </li>
+                }
+            </ul>
+        </aside>
+
+        <div class="builder-pool">
+            <div class="builder-filters">
+                <button class="btn @(_filter == PoolFilter.All ? "primary" : "ghost")" @onclick="() => _filter = PoolFilter.All">@Loc.T("builder.filterAll")</button>
+                <button class="btn @(_filter == PoolFilter.Units ? "primary" : "ghost")" @onclick="() => _filter = PoolFilter.Units">@Loc.T("builder.filterUnits")</button>
+                <button class="btn @(_filter == PoolFilter.Specials ? "primary" : "ghost")" @onclick="() => _filter = PoolFilter.Specials">@Loc.T("builder.filterSpecials")</button>
+            </div>
+            <div class="pool-grid">
+                @foreach (var card in PoolCards)
+                {
+                    var remaining = Sessions.Decks.RemainingCopies(_faction, card.Name, _cardIds);
+                    <button type="button"
+                            class="pool-card faction-@card.Faction.ToString().ToLowerInvariant() @(card.IsHero ? "hero" : "") @(card.Type == CardType.Special ? "special" : "") @(remaining <= 0 ? "in-deck-full" : "")"
+                            disabled="@(remaining <= 0)"
+                            @onclick="() => AddCard(card.Name)"
+                            title="@($"{Loc.CardName(card.Name)} — {Loc.Abilities(card.Abilities)}")">
+                        <span class="pool-top">
+                            <span class="strength">@(card.Type == CardType.Unit ? card.Strength.ToString() : "★")</span>
+                            <span class="pool-left">+@remaining</span>
+                        </span>
+                        <span class="card-name">@Loc.CardName(card.Name)</span>
+                        <span class="card-meta">
+                            @(card.Type == CardType.Unit ? Loc.Row(card.Row) : Loc.T("builder.special"))
+                            @if (card.Abilities.Count > 0)
+                            {
+                                <span> · @Loc.Abilities(card.Abilities.Where(a => a != Ability.None).Take(1))</span>
+                            }
+                        </span>
+                    </button>
+                }
+            </div>
+        </div>
+    </div>
+</section>
+
+@code {
+    [Parameter] public Guid? DeckId { get; set; }
+
+    private static readonly Faction[] Factions =
+    [
+        Faction.NorthernRealms, Faction.Nilfgaard, Faction.Scoiatael, Faction.Monsters, Faction.Skellige
+    ];
+
+    private enum PoolFilter { All, Units, Specials }
+
+    private Guid _id = Guid.NewGuid();
+    private string _name = "My deck";
+    private Faction _faction = Faction.NorthernRealms;
+    private string _leaderId = "";
+    private List<string> _cardIds = [];
+    private PoolFilter _filter = PoolFilter.All;
+    private string? _message;
+    private bool _messageOk;
+    private DeckValidationResult _validation = new();
+    private BoundSelect<Faction, Faction>? _factionSelect;
+    private BoundSelect<CardDefinition, string>? _leaderSelect;
+
+    private IEnumerable<CardDefinition> Leaders =>
+        Sessions.Catalog.All.Values.Where(c => c.Type == CardType.Leader && c.Faction == _faction);
+
+    private int _unitCount => CountType(CardType.Unit);
+    private int _specialCount => CountType(CardType.Special);
+    private bool _canSave => !string.IsNullOrWhiteSpace(_name) && !string.IsNullOrEmpty(_leaderId);
+
+    private IEnumerable<IGrouping<string, CardDefinition>> DeckGroups =>
+        _cardIds.Select(id => Sessions.Catalog.Get(id))
+            .GroupBy(c => c.Name)
+            .OrderBy(g => g.First().Type)
+            .ThenBy(g => Loc.CardName(g.Key));
+
+    private IEnumerable<CardDefinition> PoolCards
+    {
+        get
+        {
+            var q = Sessions.Catalog.All.Values
+                .Where(c => c.Type is CardType.Unit or CardType.Special)
+                .Where(c => c.Faction == _faction || c.Faction == Faction.Neutral);
+
+            q = _filter switch
+            {
+                PoolFilter.Units => q.Where(c => c.Type == CardType.Unit),
+                PoolFilter.Specials => q.Where(c => c.Type == CardType.Special),
+                _ => q
+            };
+
+            return q.GroupBy(c => c.Name)
+                .Select(g => g.First())
+                .OrderBy(c => c.Type)
+                .ThenByDescending(c => c.Strength)
+                .ThenBy(c => Loc.CardName(c.Name));
+        }
+    }
+
+    protected override void OnInitialized()
+    {
+        Loc.Changed += OnLang;
+        if (DeckId is Guid id && Sessions.Decks.Get(id) is { } existing)
+        {
+            _id = existing.IsPreset ? Guid.NewGuid() : existing.Id;
+            _name = existing.IsPreset ? existing.Name + " (copy)" : existing.Name;
+            _faction = existing.Faction;
+            _leaderId = existing.LeaderId;
+            _cardIds = [.. existing.CardIds];
+        }
+        else
+        {
+            LoadPreset();
+        }
+        Revalidate();
+    }
+
+    private void OnLang() => InvokeAsync(StateHasChanged);
+    public void Dispose() => Loc.Changed -= OnLang;
+
+    private void LoadPreset()
+    {
+        var preset = PresetDecks.ForFaction(_faction);
+        _name = Loc.T("builder.copyOf", Loc.FactionName(_faction));
+        _leaderId = preset.LeaderId;
+        _cardIds = [.. preset.CardIds];
+        _id = Guid.NewGuid();
+        Revalidate();
+    }
+
+    private void CloseDropdowns()
+    {
+        _factionSelect?.Close();
+        _leaderSelect?.Close();
+    }
+
+    private Task OnFactionPicked(Faction f)
+    {
+        if (_faction == f) return Task.CompletedTask;
+        _faction = f;
+        LoadPreset();
+        return Task.CompletedTask;
+    }
+
+    private Task OnLeaderPicked(string id)
+    {
+        _leaderId = id;
+        Revalidate();
+        return Task.CompletedTask;
+    }
+
+    private void AddCard(string name)
+    {
+        var id = Sessions.Decks.NextAvailableCardId(_faction, name, _cardIds);
+        if (id is null) return;
+        _cardIds.Add(id);
+        Revalidate();
+    }
+
+    private void RemoveOne(string name)
+    {
+        var idx = _cardIds.FindLastIndex(id => Sessions.Catalog.Get(id).Name == name);
+        if (idx >= 0) _cardIds.RemoveAt(idx);
+        Revalidate();
+    }
+
+    private void Save()
+    {
+        var deck = new SavedDeck
+        {
+            Id = _id,
+            Name = _name.Trim(),
+            Faction = _faction,
+            LeaderId = _leaderId,
+            CardIds = [.. _cardIds]
+        };
+        Sessions.Decks.Save(deck);
+        _id = deck.Id;
+        _message = Loc.T("builder.saved");
+        _messageOk = true;
+        Revalidate();
+    }
+
+    private void Revalidate()
+    {
+        if (string.IsNullOrEmpty(_leaderId) && Leaders.Any())
+            _leaderId = Leaders.First().Id;
+
+        _validation = DeckValidator.Validate(new DeckList(_name, _faction, _leaderId, _cardIds), Sessions.Catalog);
+    }
+
+    private int CountType(CardType type) =>
+        _cardIds.Count(id => Sessions.Catalog.Get(id).Type == type);
+}

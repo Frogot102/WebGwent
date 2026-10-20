@@ -1,0 +1,61 @@
+@typeparam TItem
+@typeparam TValue
+
+<div class="bound-select @(Open ? "open" : null)" @onclick:stopPropagation="true">
+    <button type="button" class="bound-select-trigger" @onclick="Toggle" title="@SelectedTitle">
+        <span class="bound-select-label">@SelectedTitle</span>
+        <span class="bound-select-caret" aria-hidden="true">▾</span>
+    </button>
+    @if (Open)
+    {
+        <ul class="bound-select-menu">
+            @foreach (var opt in Options)
+            {
+                var title = TitleSelector(opt);
+                var value = ValueSelector(opt);
+                var active = EqualityComparer<TValue>.Default.Equals(value, Value);
+                <li>
+                    <button type="button"
+                            class="bound-select-option @(active ? "active" : null)"
+                            title="@title"
+                            @onclick="() => Choose(value)">
+                        @title
+                    </button>
+                </li>
+            }
+        </ul>
+    }
+</div>
+
+@code {
+    [Parameter] public TValue? Value { get; set; }
+    [Parameter] public EventCallback<TValue> ValueChanged { get; set; }
+    [Parameter] public IEnumerable<TItem> Options { get; set; } = [];
+    [Parameter] public Func<TItem, TValue> ValueSelector { get; set; } = default!;
+    [Parameter] public Func<TItem, string> TitleSelector { get; set; } = default!;
+
+    private bool Open { get; set; }
+
+    private string SelectedTitle
+    {
+        get
+        {
+            foreach (var opt in Options)
+            {
+                if (EqualityComparer<TValue>.Default.Equals(ValueSelector(opt), Value))
+                    return TitleSelector(opt);
+            }
+            return "—";
+        }
+    }
+
+    private void Toggle() => Open = !Open;
+
+    private async Task Choose(TValue value)
+    {
+        Open = false;
+        await ValueChanged.InvokeAsync(value);
+    }
+
+    public void Close() => Open = false;
+}

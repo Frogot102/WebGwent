@@ -1,0 +1,279 @@
+@page "/play"
+@page "/play/{Mode}"
+@layout GameLayout
+@rendermode InteractiveServer
+@inject GameSessionManager Sessions
+@inject LocaleService Loc
+@inject NavigationManager Nav
+@inject IJSRuntime Js
+@inject AccountAuthService Auth
+@inject AccountStore Accounts
+@implements IDisposable
+
+<PageTitle>WebGwent — @Loc.T("play.bot")</PageTitle>
+
+@if (_view is null)
+{
+    <div class="setup-panel wide">
+        <h1>@Loc.T("play.bot")</h1>
+        <label>@Loc.T("play.yourDeck")
+            <select @bind="_deck0Id">
+                @foreach (var d in AllDecks)
+                {
+                    <option value="@d.Id">@DeckLabel(d)</option>
+                }
+            </select>
+        </label>
+        <label>@Loc.T("play.botDeck")
+            <select @bind="_deck1Id">
+                @foreach (var d in AllDecks)
+                {
+                    <option value="@d.Id">@DeckLabel(d)</option>
+                }
+            </select>
+        </label>
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="error-banner">@_error</div>
+        }
+        <button class="btn primary" @onclick="Start">@Loc.T("play.start")</button>
+        <a class="link-back" href="/home">@Loc.T("play.back")</a>
+        <a class="link-back" href="/decks/builder">@Loc.T("decks.openBuilder")</a>
+    </div>
+}
+else
+{
+    <GameBoard View="_view"
+               YouProfile="_youProfile"
+               OppProfile="_oppProfile"
+               Error="@_error"
+               InputLocked="@_botBusy"
+               OnMulligan="Mulligan"
+               OnFinishMulligan="FinishMulligan"
+               OnPlay="PlayCard"
+               OnPass="Pass"
+               OnUseLeader="UseLeader"
+               OnResolvePending="ResolvePending"
+               OnChooseStart="ChooseStart" />
+}
+
+@code {
+    [Parameter] public string? Mode { get; set; }
+
+    private Guid _deck0Id;
+    private Guid _deck1Id;
+    private Guid _matchId;
+    private int _viewer;
+    private MatchView? _view;
+    private string? _error;
+    private bool _botBusy;
+    private bool _matchEndSwept;
+    private bool _matchRecorded;
+    private PlayerAccount? _account;
+    private BoardProfile? _youProfile;
+    private BoardProfile? _oppProfile;
+    private CancellationTokenSource? _botCts;
+
+    private IReadOnlyList<SavedDeck> AllDecks => Sessions.Decks.GetAll();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!string.IsNullOrEmpty(Mode) && !Mode.Equals("bot", StringComparison.OrdinalIgnoreCase))
+        {
+            Nav.NavigateTo("/play/bot", replace: true);
+            return;
+        }
+
+        Loc.Changed += OnLang;
+        _account = await Auth.GetCurrentAsync();
+        var decks = AllDecks;
+        var fav = _account?.FavoriteFaction ?? Faction.NorthernRealms;
+        _deck0Id = decks.FirstOrDefault(d => d.Faction == fav)?.Id
+                   ?? decks.FirstOrDefault(d => d.Faction == Faction.NorthernRealms)?.Id
+                   ?? decks[0].Id;
+        _deck1Id = decks.FirstOrDefault(d => d.Faction == Faction.Nilfgaard)?.Id ?? decks.Last().Id;
+    }
+
+    private void OnLang() => InvokeAsync(StateHasChanged);
+    public void Dispose()
+    {
+        Loc.Changed -= OnLang;
+        _botCts?.Cancel();
+        _botCts?.Dispose();
+    }
+
+    private string DeckLabel(SavedDeck d) =>
+        $"{(d.IsPreset ? "★ " : "")}{d.Name} ({Loc.FactionName(d.Faction)})";
+
+    private async Task Start()
+    {
+        var d0 = Sessions.Decks.Get(_deck0Id) ?? throw new InvalidOperationException("Deck 1 missing");
+        var d1 = Sessions.Decks.Get(_deck1Id) ?? throw new InvalidOperationException("Deck 2 missing");
+        var v0 = Sessions.Decks.Validate(d0);
+        var v1 = Sessions.Decks.Validate(d1);
+        if (!v0.IsValid || !v1.IsValid)
+        {
+            _error = string.Join("; ", v0.Errors.Concat(v1.Errors));
+            return;
+        }
+
+        var youName = _account?.DisplayName ?? Loc.T("play.you");
+        var botName = Loc.T("play.botName");
+        var match = Sessions.CreateLocal(GameMode.VsBot, d0.ToDeckList(), d1.ToDeckList(),
+            youName,
+            botName);
+        _matchId = match.MatchId;
+        _viewer = 0;
+        _matchEndSwept = false;
+        _matchRecorded = false;
+        _youProfile = _account is not null ? BoardProfile.FromAccount(_account) : BoardProfile.Guest(youName);
+        _oppProfile = BoardProfile.Bot(botName);
+        Refresh();
+        await AnimateBotAsync();
+    }
+
+    private void Refresh()
+    {
+        var match = Sessions.GetLocal(_matchId);
+        if (match is null) return;
+        _viewer = 0;
+        _view = MatchView.From(match, _viewer);
+        _error = null;
+        TryRecordMatch(match);
+    }
+
+    private void TryRecordMatch(MatchState match)
+    {
+        if (_matchRecorded || match.Phase != MatchPhase.MatchEnd || _account is null)
+            return;
+        Accounts.RecordBotMatch(_account.Id, match, _viewer);
+        _matchRecorded = true;
+        _account = Accounts.FindById(_account.Id);
+    }
+
+    private Task Mulligan(Guid id) => ActAsync((m, e) => e.Mulligan(m, _viewer, id));
+    private Task FinishMulligan() => ActAsync((m, e) => e.FinishMulligan(m, _viewer));
+    private Task Pass() => ActAsync((m, e) => e.Pass(m, _viewer));
+    private Task UseLeader() => ActAsync((m, e) => e.UseLeader(m, _viewer));
+    private Task ChooseStart(int who) => ActAsync((m, e) => e.ChooseWhoStarts(m, _viewer, who));
+
+    private Task PlayCard((Guid CardId, CombatRow? Row, Guid? Target) args) =>
+        ActAsync((m, e) => e.PlayCard(m, _viewer, args.CardId, args.Row, args.Target));
+
+    private Task ResolvePending((Guid? Target, CombatRow? Row) args) =>
+        ActAsync((m, e) => e.ResolvePending(m, _viewer, args.Target, args.Row));
+
+    private async Task ActAsync(Action<MatchState, RulesEngine> action)
+    {
+        if (_botBusy) return;
+        _botBusy = true;
+        try
+        {
+            Sessions.ActLocal(_matchId, _viewer, action, autoBot: false);
+            Refresh();
+            await InvokeAsync(StateHasChanged);
+            await ResolveBoardClearAsync();
+            _botBusy = false;
+            await AnimateBotAsync();
+        }
+        catch (Exception ex)
+        {
+            _botBusy = false;
+            _error = ex.Message switch
+            {
+                "NoDecoyTargets" => Loc.T("play.err.noDecoy"),
+                _ => ex.Message
+            };
+        }
+    }
+
+    private async Task ResolveBoardClearAsync(CancellationToken ct = default)
+    {
+        if (_view?.Phase == MatchPhase.RoundEnd)
+        {
+            await InvokeAsync(StateHasChanged);
+            await SweepAsync();
+            if (ct.IsCancellationRequested) return;
+            Sessions.ContinueAfterRoundLocal(_matchId, _viewer);
+            Refresh();
+            await InvokeAsync(StateHasChanged);
+        }
+        else if (_view?.Phase == MatchPhase.MatchEnd && !_matchEndSwept)
+        {
+            _matchEndSwept = true;
+            await InvokeAsync(StateHasChanged);
+            await SweepAsync();
+        }
+    }
+
+    private async Task SweepAsync()
+    {
+        try
+        {
+            await Js.InvokeAsync<bool>("webGwent.sweepBoardToDiscard");
+        }
+        catch (JSException)
+        {
+            await Task.Delay(400);
+        }
+    }
+
+    private async Task AnimateBotAsync()
+    {
+        _botCts?.Cancel();
+        _botCts?.Dispose();
+        _botCts = new CancellationTokenSource();
+        var ct = _botCts.Token;
+
+        _botBusy = true;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            var steps = 0;
+            while (steps++ < 40)
+            {
+                if (ct.IsCancellationRequested) break;
+
+                if (_view?.Phase == MatchPhase.RoundEnd)
+                {
+                    await ResolveBoardClearAsync(ct);
+                    continue;
+                }
+
+                if (_view?.Phase == MatchPhase.MatchEnd)
+                {
+                    await ResolveBoardClearAsync(ct);
+                    break;
+                }
+
+                if (!Sessions.StepBotLocal(_matchId))
+                    break;
+
+                Refresh();
+                await InvokeAsync(StateHasChanged);
+
+                if (_view?.Phase == MatchPhase.RoundEnd || _view?.Phase == MatchPhase.MatchEnd)
+                {
+                    await ResolveBoardClearAsync(ct);
+                    if (_view?.Phase == MatchPhase.MatchEnd) break;
+                    continue;
+                }
+
+                var delay = _view?.Phase == MatchPhase.Mulligan ? 60
+                    : _view?.LastPlayedCardId is not null ? 1100
+                    : 850;
+                await Task.Delay(delay, ct);
+            }
+        }
+        catch (TaskCanceledException)
+        {
+            /* disposed / restarted */
+        }
+        finally
+        {
+            Refresh();
+            _botBusy = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+}

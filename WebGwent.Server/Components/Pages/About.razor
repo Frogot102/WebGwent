@@ -1,0 +1,26 @@
+@page "/about"
+@inject LocaleService Loc
+@implements IDisposable
+@rendermode InteractiveServer
+
+<PageTitle>WebGwent — @Loc.T("nav.about")</PageTitle>
+
+<section class="about-page">
+    <h1>@Loc.T("about.title")</h1>
+    <p>@Loc.T("about.p1")</p>
+    <ul>
+        <li>@Loc.T("about.li1")</li>
+        <li>@Loc.T("about.li2")</li>
+        <li>@Loc.T("about.li3")</li>
+        <li>@Loc.T("about.li4")</li>
+    </ul>
+    <p>@Loc.T("about.run") <code>dotnet run --project WebGwent.Server</code></p>
+    <p>@Loc.T("about.tests") <code>dotnet test</code></p>
+    <a href="/home">@Loc.T("about.back")</a>
+</section>
+
+@code {
+    protected override void OnInitialized() => Loc.Changed += OnLang;
+    private void OnLang() => InvokeAsync(StateHasChanged);
+    public void Dispose() => Loc.Changed -= OnLang;
+}

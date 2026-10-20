@@ -1,0 +1,35 @@
+﻿@page "/home"
+@inject LocaleService Loc
+@implements IDisposable
+@rendermode InteractiveServer
+
+<PageTitle>WebGwent</PageTitle>
+
+<section class="hero-menu">
+    <div class="hero-copy">
+        <p class="eyebrow">@Loc.T("home.eyebrow")</p>
+        <h1>WebGwent</h1>
+        <p class="lede">@Loc.T("home.lede")</p>
+    </div>
+
+    <div class="mode-grid">
+        <a class="mode-card" href="/play/bot">
+            <h2>@Loc.T("home.bot.title")</h2>
+            <p>@Loc.T("home.bot.desc")</p>
+        </a>
+        <a class="mode-card" href="/online">
+            <h2>@Loc.T("home.online.title")</h2>
+            <p>@Loc.T("home.online.desc")</p>
+        </a>
+        <a class="mode-card" href="/decks">
+            <h2>@Loc.T("home.decks.title")</h2>
+            <p>@Loc.T("home.decks.desc")</p>
+        </a>
+    </div>
+</section>
+
+@code {
+    protected override void OnInitialized() => Loc.Changed += OnChanged;
+    private void OnChanged() => InvokeAsync(StateHasChanged);
+    public void Dispose() => Loc.Changed -= OnChanged;
+}

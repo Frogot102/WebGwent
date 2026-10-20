@@ -1,0 +1,102 @@
+@page "/decks"
+@rendermode InteractiveServer
+@inject GameSessionManager Sessions
+@inject LocaleService Loc
+@implements IDisposable
+
+<PageTitle>WebGwent — @Loc.T("nav.decks")</PageTitle>
+
+<section class="decks-page">
+    <div class="decks-header-row">
+        <div>
+            <h1>@Loc.T("decks.title")</h1>
+            <p class="lede">@Loc.T("decks.lede", DeckValidator.MinUnitCards, DeckValidator.MaxSpecialCards)</p>
+        </div>
+        <a class="btn primary" href="/decks/builder">@Loc.T("decks.openBuilder")</a>
+    </div>
+
+    <h2 class="section-title">@Loc.T("decks.presets")</h2>
+    <div class="faction-tabs">
+        @foreach (var deck in Sessions.Decks.GetPresets())
+        {
+            <button class="btn @(Equals(_selected?.Id, deck.Id) ? "primary" : "ghost")" @onclick="() => Select(deck)">@Loc.FactionName(deck.Faction)</button>
+        }
+    </div>
+
+    <h2 class="section-title">@Loc.T("decks.custom")</h2>
+    @if (!Sessions.Decks.GetCustom().Any())
+    {
+        <p class="muted">@Loc.T("decks.noCustom")</p>
+    }
+    else
+    {
+        <div class="faction-tabs">
+            @foreach (var deck in Sessions.Decks.GetCustom())
+            {
+                <button class="btn @(Equals(_selected?.Id, deck.Id) ? "primary" : "ghost")" @onclick="() => Select(deck)">
+                    @deck.Name · @Loc.FactionName(deck.Faction)
+                </button>
+            }
+        </div>
+    }
+
+    @if (_selected is not null)
+    {
+        var result = Sessions.Decks.Validate(_selected);
+        <div class="deck-detail">
+            <div class="decks-header-row">
+                <h2>@_selected.Name</h2>
+                <div class="builder-actions">
+                    <a class="btn" href="@($"/decks/builder/{_selected.Id}")">@(_selected.IsPreset ? Loc.T("decks.editCopy") : Loc.T("decks.edit"))</a>
+                    @if (!_selected.IsPreset)
+                    {
+                        <button class="btn ghost" @onclick="DeleteSelected">@Loc.T("decks.delete")</button>
+                    }
+                </div>
+            </div>
+            <p class="@(result.IsValid ? "ok" : "bad")">@(result.IsValid ? Loc.T("decks.valid") : string.Join("; ", result.Errors))</p>
+            <p>@Loc.T("decks.leader") <strong>@Loc.CardName(Sessions.Catalog.Get(_selected.LeaderId).Name)</strong></p>
+            <p>@Loc.T("decks.cards", _selected.CardIds.Count)</p>
+            <ul class="card-table deck-browse-list">
+                <li class="card-row-item head">
+                    <span class="col-str">@Loc.T("decks.colPower")</span>
+                    <span class="col-name">@Loc.T("decks.colName")</span>
+                    <span class="col-qty">@Loc.T("decks.colQty")</span>
+                    <span class="col-abil">@Loc.T("decks.colAbility")</span>
+                </li>
+                @foreach (var group in _selected.CardIds.Select(id => Sessions.Catalog.Get(id)).GroupBy(c => c.Name).OrderBy(g => g.First().Type).ThenBy(g => Loc.CardName(g.Key)))
+                {
+                    var c = group.First();
+                    var abil = Loc.Abilities(c.Abilities);
+                    <li class="card-row-item">
+                        <span class="col-str">@(c.Type == CardType.Unit ? c.Strength.ToString() : "—")</span>
+                        <span class="col-name" title="@Loc.CardName(c.Name)">@Loc.CardName(c.Name)</span>
+                        <span class="col-qty">×@group.Count()</span>
+                        <span class="col-abil" title="@abil">@(string.IsNullOrEmpty(abil) ? "—" : abil)</span>
+                    </li>
+                }
+            </ul>
+        </div>
+    }
+</section>
+
+@code {
+    private SavedDeck? _selected;
+
+    protected override void OnInitialized()
+    {
+        _selected = Sessions.Decks.GetPresets().FirstOrDefault();
+        Loc.Changed += OnLang;
+    }
+
+    private void OnLang() => InvokeAsync(StateHasChanged);
+    public void Dispose() => Loc.Changed -= OnLang;
+    private void Select(SavedDeck deck) => _selected = deck;
+
+    private void DeleteSelected()
+    {
+        if (_selected is null || _selected.IsPreset) return;
+        Sessions.Decks.Delete(_selected.Id);
+        _selected = Sessions.Decks.GetPresets().FirstOrDefault();
+    }
+}

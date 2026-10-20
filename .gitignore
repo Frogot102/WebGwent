@@ -1,0 +1,10 @@
+bin/
+obj/
+.vs/
+**/App_Data/
+*.user
+*.suo
+appsettings.Development.json
+**/properties/launchSettings.json.bak
+.idea/
+*.log

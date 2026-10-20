@@ -1,0 +1,196 @@
+@page "/online"
+@layout GameLayout
+@rendermode InteractiveServer
+@implements IAsyncDisposable
+@inject NavigationManager Nav
+@inject LocaleService Loc
+@inject GameSessionManager Sessions
+@inject AccountAuthService Auth
+@using WebGwent.Server.Hubs
+
+<PageTitle>WebGwent — @Loc.T("online.title")</PageTitle>
+
+@if (_view is null)
+{
+    <div class="setup-panel wide">
+        <h1>@Loc.T("online.title")</h1>
+        <label>@Loc.T("online.name") <input @bind="_name" maxlength="24" /></label>
+        <label>@Loc.T("play.yourDeck")
+            <select @bind="_deckId">
+                @foreach (var d in Sessions.Decks.GetAll())
+                {
+                    <option value="@d.Id">@((d.IsPreset ? "★ " : "") + d.Name + " (" + Loc.FactionName(d.Faction) + ")")</option>
+                }
+            </select>
+        </label>
+
+        <div class="online-actions">
+            <button class="btn primary" disabled="@(_busy)" @onclick="CreateRoom">@Loc.T("online.create")</button>
+            <div class="join-row">
+                <input @bind="_joinCode" placeholder="@Loc.T("online.codePlaceholder")" maxlength="5" />
+                <button class="btn" disabled="@(_busy)" @onclick="JoinRoom">@Loc.T("online.join")</button>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_code))
+        {
+            <p class="room-code">@Loc.T("online.waiting", _code)</p>
+        }
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <p class="error-banner">@_error</p>
+        }
+        <a class="link-back" href="/home">@Loc.T("online.back")</a>
+    </div>
+}
+else
+{
+    <div class="online-meta">@Loc.T("online.meta", _code!, _playerIndex + 1)</div>
+    <GameBoard View="_view"
+               YouProfile="_youProfile"
+               OppProfile="_oppProfile"
+               Error="@_error"
+               OnMulligan="Mulligan"
+               OnFinishMulligan="FinishMulligan"
+               OnPlay="PlayCard"
+               OnPass="Pass"
+               OnUseLeader="UseLeader"
+               OnResolvePending="ResolvePending"
+               OnChooseStart="ChooseStart" />
+}
+
+@code {
+    private HubConnection? _hub;
+    private string _name = "Geralt";
+    private Guid _deckId;
+    private string _joinCode = "";
+    private string? _code;
+    private int _playerIndex;
+    private MatchView? _view;
+    private BoardProfile? _youProfile;
+    private BoardProfile? _oppProfile;
+    private string? _error;
+    private bool _busy;
+    private PlayerAccount? _account;
+
+    private void OnLang() => InvokeAsync(StateHasChanged);
+
+    protected override async Task OnInitializedAsync()
+    {
+        Loc.Changed += OnLang;
+        _account = await Auth.GetCurrentAsync();
+        if (_account is not null)
+            _name = _account.DisplayName;
+
+        var decks = Sessions.Decks.GetAll();
+        var fav = _account?.FavoriteFaction ?? Faction.NorthernRealms;
+        _deckId = decks.FirstOrDefault(d => d.Faction == fav)?.Id
+                  ?? decks.FirstOrDefault(d => d.Faction == Faction.NorthernRealms)?.Id
+                  ?? decks[0].Id;
+
+        _hub = new HubConnectionBuilder()
+            .WithUrl(Nav.ToAbsoluteUri("/hubs/game"))
+            .WithAutomaticReconnect()
+            .Build();
+
+        _hub.On<MatchBoardUpdate>("MatchUpdated", update =>
+        {
+            _view = update.View;
+            _youProfile = update.You;
+            _oppProfile = update.Opponent;
+            _error = null;
+            InvokeAsync(StateHasChanged);
+        });
+        _hub.On<string>("Error", msg =>
+        {
+            _error = msg;
+            InvokeAsync(StateHasChanged);
+        });
+
+        _hub.Reconnected += async _ =>
+        {
+            if (!string.IsNullOrEmpty(_code))
+                await _hub.SendAsync("Reconnect", _code, _playerIndex);
+        };
+
+        await _hub.StartAsync();
+    }
+
+    private string? AccountIdArg => _account?.Id.ToString();
+
+    private async Task CreateRoom()
+    {
+        if (_hub is null) return;
+        _busy = true;
+        try
+        {
+            var deck = Sessions.Decks.Get(_deckId);
+            var result = await _hub.InvokeAsync<RoomCreatedDto>(
+                "CreateRoom",
+                deck?.Faction.ToString() ?? "NorthernRealms",
+                _name,
+                _deckId.ToString(),
+                AccountIdArg);
+            _code = result.Code;
+            _playerIndex = result.PlayerIndex;
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task JoinRoom()
+    {
+        if (_hub is null) return;
+        _busy = true;
+        try
+        {
+            var deck = Sessions.Decks.Get(_deckId);
+            var result = await _hub.InvokeAsync<JoinedRoomDto>(
+                "JoinRoom",
+                _joinCode,
+                deck?.Faction.ToString() ?? "NorthernRealms",
+                _name,
+                _deckId.ToString(),
+                AccountIdArg);
+            _code = result.Code;
+            _playerIndex = result.PlayerIndex;
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally { _busy = false; }
+    }
+
+    private Task Mulligan(Guid id) =>
+        _hub!.SendAsync("Mulligan", _code, _playerIndex, id);
+
+    private Task FinishMulligan() =>
+        _hub!.SendAsync("FinishMulligan", _code, _playerIndex);
+
+    private Task Pass() =>
+        _hub!.SendAsync("Pass", _code, _playerIndex);
+
+    private Task UseLeader() =>
+        _hub!.SendAsync("UseLeader", _code, _playerIndex);
+
+    private Task PlayCard((Guid CardId, CombatRow? Row, Guid? Target) a) =>
+        _hub!.SendAsync("PlayCard", _code, _playerIndex, a.CardId, a.Row?.ToString(), a.Target);
+
+    private Task ResolvePending((Guid? Target, CombatRow? Row) a) =>
+        _hub!.SendAsync("ResolvePending", _code, _playerIndex, a.Target, a.Row?.ToString());
+
+    private Task ChooseStart(int who) =>
+        _hub!.SendAsync("ChooseWhoStarts", _code, _playerIndex, who);
+
+    public async ValueTask DisposeAsync()
+    {
+        Loc.Changed -= OnLang;
+        if (_hub is not null)
+            await _hub.DisposeAsync();
+    }
+
+}

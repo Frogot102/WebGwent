@@ -1,0 +1,80 @@
+@inject LocaleService Loc
+
+@if (Card is null)
+{
+    return;
+}
+
+<button type="button"
+        data-card-id="@Card.InstanceId"
+        class="gwent-card faction-@Card.Faction.ToString().ToLowerInvariant() @(Selected ? "selected" : "") @(JustPlayed ? "just-played" : "") @(Card.IsHero ? "hero" : "") @(Card.Type == CardType.Special ? "special" : "") @(Targetable ? "decoy-target" : "") @(Dimmed ? "dimmed" : "")"
+        disabled="@Disabled"
+        @onclick="OnClick"
+        title="@Tooltip">
+    <span class="card-banner">
+        <span class="strength">@(Card.Type == CardType.Unit ? Card.CurrentStrength.ToString() : "★")</span>
+        @if (Card.Type == CardType.Unit)
+        {
+            <span class="row-chip">@RowShort(Card.Row)</span>
+        }
+    </span>
+    <span class="card-name">@Loc.CardName(Card.Name)</span>
+    <span class="ability-chips">
+        @foreach (var a in Card.Abilities.Where(x => x is not Ability.None and not Ability.Hero).Take(3))
+        {
+            <span class="chip" title="@Loc.Ability(a)">@AbilityShort(a)</span>
+        }
+        @if (Card.IsHero)
+        {
+            <span class="chip hero-chip" title="@Loc.Ability(Ability.Hero)">H</span>
+        }
+    </span>
+</button>
+
+@code {
+    [Parameter] public CardView? Card { get; set; }
+    [Parameter] public bool Selected { get; set; }
+    [Parameter] public bool JustPlayed { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public bool Targetable { get; set; }
+    [Parameter] public bool Dimmed { get; set; }
+    [Parameter] public EventCallback<CardView> OnSelected { get; set; }
+
+    private string Tooltip => Card is null
+        ? ""
+        : $"{Loc.CardName(Card.Name)} ({Loc.FactionName(Card.Faction)}) — {Loc.Abilities(Card.Abilities)}";
+
+    private async Task OnClick()
+    {
+        if (Card is not null && !Disabled)
+            await OnSelected.InvokeAsync(Card);
+    }
+
+    private string RowShort(CombatRow row) => row switch
+    {
+        CombatRow.Melee => Loc.Language == AppLanguage.Ru ? "Бл" : "M",
+        CombatRow.Ranged => Loc.Language == AppLanguage.Ru ? "Дл" : "R",
+        CombatRow.Siege => Loc.Language == AppLanguage.Ru ? "Ос" : "S",
+        _ => ""
+    };
+
+    private static string AbilityShort(Ability a) => a switch
+    {
+        Ability.Spy => "Spy",
+        Ability.Medic => "Med",
+        Ability.TightBond => "TB",
+        Ability.MoraleBoost => "MB",
+        Ability.Muster => "Mus",
+        Ability.Agile => "Agl",
+        Ability.Decoy => "Dec",
+        Ability.Scorch => "Scr",
+        Ability.CommandersHorn => "Horn",
+        Ability.WeatherFrost => "Fr",
+        Ability.WeatherFog => "Fog",
+        Ability.WeatherRain => "Rn",
+        Ability.WeatherClear => "Clr",
+        Ability.Berserker => "Ber",
+        Ability.Mardroeme => "Mar",
+        _ => ""
+    };
+}

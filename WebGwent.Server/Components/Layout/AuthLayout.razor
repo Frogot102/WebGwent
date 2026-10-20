@@ -1,0 +1,21 @@
+@inherits LayoutComponentBase
+@inject LocaleService Loc
+@implements IDisposable
+
+<div class="menu-shell auth-shell">
+    <header class="menu-header auth-header">
+        <span class="brand">WebGwent</span>
+        <nav>
+            <LanguageSwitcher />
+        </nav>
+    </header>
+    <main class="menu-main">
+        @Body
+    </main>
+</div>
+
+@code {
+    protected override void OnInitialized() => Loc.Changed += OnChanged;
+    private void OnChanged() => InvokeAsync(StateHasChanged);
+    public void Dispose() => Loc.Changed -= OnChanged;
+}

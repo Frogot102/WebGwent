@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="WebGwent.Game/WebGwent.Game.csproj" />
+  <Project Path="WebGwent.Server/WebGwent.Server.csproj" />
+  <Project Path="WebGwent.Tests/WebGwent.Tests.csproj" />
+</Solution>

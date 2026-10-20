@@ -1,0 +1,47 @@
+﻿@inherits LayoutComponentBase
+@inject LocaleService Loc
+@inject AccountAuthService Auth
+@implements IDisposable
+
+<div class="menu-shell">
+    <header class="menu-header">
+        <a class="brand" href="/home">WebGwent</a>
+        <nav>
+            <a href="/home">@Loc.T("nav.play")</a>
+            <a href="/decks">@Loc.T("nav.decks")</a>
+            <a href="/about">@Loc.T("nav.about")</a>
+            @if (_account is not null)
+            {
+                <a href="/account/profile" class="nav-account">
+                    <PlayerAvatar Account="_account" CssClass="nav-avatar" Size="24" />
+                    @_account.DisplayName
+                    <span class="nav-rating">@_account.Rating</span>
+                </a>
+                <a href="/account/history">@Loc.T("auth.history")</a>
+                <a href="/api/auth/logout">@Loc.T("auth.logout")</a>
+            }
+            else
+            {
+                <a href="/account/login">@Loc.T("auth.login")</a>
+                <a href="/account/register">@Loc.T("auth.register")</a>
+            }
+            <LanguageSwitcher />
+        </nav>
+    </header>
+    <main class="menu-main">
+        @Body
+    </main>
+</div>
+
+@code {
+    private PlayerAccount? _account;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Loc.Changed += OnChanged;
+        _account = await Auth.GetCurrentAsync();
+    }
+
+    private void OnChanged() => InvokeAsync(StateHasChanged);
+    public void Dispose() => Loc.Changed -= OnChanged;
+}
