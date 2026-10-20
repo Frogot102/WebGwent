@@ -1,0 +1,86 @@
+@page "/account/history"
+@rendermode InteractiveServer
+@inject AccountAuthService Auth
+@inject AccountStore Store
+@inject LocaleService Loc
+
+<PageTitle>WebGwent — @Loc.T("auth.history")</PageTitle>
+
+<div class="history-page">
+    <h1>@Loc.T("auth.history")</h1>
+
+    @if (_account is null)
+    {
+        <p class="muted">@Loc.T("auth.needLogin")</p>
+        <a class="btn primary" href="/account/login">@Loc.T("auth.login")</a>
+    }
+    else if (_matches.Count == 0)
+    {
+        <p class="muted">@Loc.T("auth.historyEmpty")</p>
+        <a class="link-back" href="/account/profile">@Loc.T("auth.profile")</a>
+    }
+    else
+    {
+        <table class="history-table">
+            <thead>
+                <tr>
+                    <th>@Loc.T("auth.when")</th>
+                    <th>@Loc.T("auth.mode")</th>
+                    <th>@Loc.T("auth.opponent")</th>
+                    <th>@Loc.T("auth.result")</th>
+                    <th>@Loc.T("auth.score")</th>
+                    <th>@Loc.T("auth.rating")</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var m in _matches)
+                {
+                    var fromYou = m.PlayerAccountId == _account.Id;
+                    var result = fromYou ? m.Result : Flip(m.Result);
+                    var opp = fromYou ? m.OpponentName : m.PlayerName;
+                    var youWins = fromYou ? m.PlayerRoundWins : m.OpponentRoundWins;
+                    var oppWins = fromYou ? m.OpponentRoundWins : m.PlayerRoundWins;
+                    var delta = fromYou ? m.RatingDelta : -m.RatingDelta;
+                    var ratingCell = m.Mode == "Bot"
+                        ? "—"
+                        : (delta > 0 ? $"+{delta}" : delta == 0 ? "0" : $"{delta}");
+                    <tr class="result-@result.ToLowerInvariant()">
+                        <td>@m.PlayedAtUtc.ToLocalTime().ToString("g")</td>
+                        <td>@(m.Mode == "Bot" ? Loc.T("auth.modeBot") : Loc.T("auth.modeOnline"))</td>
+                        <td>@opp</td>
+                        <td>@ResultLabel(result)</td>
+                        <td>@youWins — @oppWins</td>
+                        <td class="delta">@ratingCell</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        <a class="link-back" href="/account/profile">@Loc.T("auth.profile")</a>
+    }
+</div>
+
+@code {
+    private PlayerAccount? _account;
+    private List<MatchHistoryEntry> _matches = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        _account = await Auth.GetCurrentAsync();
+        if (_account is not null)
+            _matches = Store.GetMatchesFor(_account.Id).ToList();
+    }
+
+    private static string Flip(string r) => r switch
+    {
+        "Win" => "Loss",
+        "Loss" => "Win",
+        _ => r
+    };
+
+    private string ResultLabel(string r) => r switch
+    {
+        "Win" => Loc.T("auth.resultWin"),
+        "Loss" => Loc.T("auth.resultLose"),
+        _ => Loc.T("auth.resultDraw")
+    };
+}

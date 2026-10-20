@@ -1,0 +1,57 @@
+@page "/account/register"
+@attribute [AllowAnonymous]
+@layout AuthLayout
+@rendermode InteractiveServer
+@inject LocaleService Loc
+
+<PageTitle>WebGwent — @Loc.T("auth.register")</PageTitle>
+
+<section class="auth-gate">
+    <div class="auth-brand">
+        <p class="eyebrow">@Loc.T("home.eyebrow")</p>
+        <h1>WebGwent</h1>
+        <p class="lede">@Loc.T("auth.gateLede")</p>
+    </div>
+
+    <form class="setup-panel wide account-panel" method="post" action="/api/auth/register">
+        <h2>@Loc.T("auth.register")</h2>
+        <label>@Loc.T("auth.username")
+            <input name="username" maxlength="24" autocomplete="username" required />
+        </label>
+        <label>@Loc.T("auth.displayName")
+            <input name="displayName" maxlength="24" />
+        </label>
+        <label>@Loc.T("auth.password")
+            <input name="password" type="password" maxlength="64" autocomplete="new-password" required />
+        </label>
+        <label>@Loc.T("auth.passwordConfirm")
+            <input name="passwordConfirm" type="password" maxlength="64" autocomplete="new-password" required />
+        </label>
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="error-banner">@_error</div>
+        }
+        <button type="submit" class="btn primary">@Loc.T("auth.register")</button>
+        <p class="account-switch">@Loc.T("auth.hasAccount") <a href="/account/login">@Loc.T("auth.login")</a></p>
+    </form>
+</section>
+
+@code {
+    [SupplyParameterFromQuery(Name = "error")] public string? ErrorCode { get; set; }
+
+    private string? _error;
+
+    protected override void OnInitialized()
+    {
+        _error = ErrorCode switch
+        {
+            "mismatch" => Loc.T("auth.err.passwordMismatch"),
+            "taken" => Loc.T("auth.err.usernameTaken"),
+            "ulen" => Loc.T("auth.err.usernameLength"),
+            "uchars" => Loc.T("auth.err.usernameChars"),
+            "plen" => Loc.T("auth.err.passwordLength"),
+            "fail" => Loc.T("auth.err.save"),
+            _ => null
+        };
+    }
+}

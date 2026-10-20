@@ -1,0 +1,195 @@
+@page "/account/profile"
+@rendermode InteractiveServer
+@inject AccountAuthService Auth
+@inject AccountStore Store
+@inject LocaleService Loc
+
+<PageTitle>WebGwent — @Loc.T("auth.profile")</PageTitle>
+
+@if (_account is null)
+{
+    <div class="setup-panel wide">
+        <h1>@Loc.T("auth.profile")</h1>
+        <p class="muted">@Loc.T("auth.needLogin")</p>
+        <a class="btn primary" href="/account/login">@Loc.T("auth.login")</a>
+    </div>
+}
+else
+{
+    <div class="profile-page">
+        <section class="profile-card">
+            <PlayerAvatar Account="_account" CssClass="profile-avatar" Size="72" />
+            <div class="profile-head">
+                <h1>@_account.DisplayName</h1>
+                <p class="muted">@($"@{_account.Username}") · @Loc.T("auth.rating") <strong>@_account.Rating</strong></p>
+            </div>
+            <dl class="profile-stats">
+                <div>
+                    <dt>@Loc.T("auth.favFaction")</dt>
+                    <dd>
+                        @Loc.FactionName(_account.FavoriteFaction)
+                        @if (_favCount > 0)
+                        {
+                            <span class="muted"> · @Loc.T("auth.favFactionMatches", _favCount)</span>
+                        }
+                        else
+                        {
+                            <span class="muted"> · @Loc.T("auth.favFactionNone")</span>
+                        }
+                    </dd>
+                </div>
+                <div><dt>@Loc.T("auth.vsPlayers")</dt><dd>@_account.MatchesVsPlayers (@_account.WinsVsPlayers/@_account.LossesVsPlayers/@_account.DrawsVsPlayers)</dd></div>
+                <div><dt>@Loc.T("auth.vsBot")</dt><dd>@_account.MatchesVsBot (@_account.WinsVsBot/@_account.LossesVsBot)</dd></div>
+            </dl>
+        </section>
+
+        <section class="setup-panel wide account-panel">
+            <h2>@Loc.T("auth.editProfile")</h2>
+            <label>@Loc.T("auth.displayName")
+                <input @bind="_displayName" maxlength="24" />
+            </label>
+
+            <div class="avatar-edit">
+                <span class="avatar-edit-label">@Loc.T("auth.avatar")</span>
+                <div class="avatar-edit-row">
+                    <PlayerAvatar Account="_previewAccount" CssClass="profile-avatar avatar-preview" Size="72" />
+                    <div class="avatar-edit-controls">
+                        <label class="btn ghost file-btn">
+                            @Loc.T("auth.avatarUpload")
+                            <InputFile OnChange="OnAvatarSelected" accept="image/png,image/jpeg,image/webp,image/gif" />
+                        </label>
+                        <p class="muted tiny">@Loc.T("auth.avatarHint")</p>
+                    </div>
+                </div>
+                <div class="avatar-picker">
+                    @foreach (var a in AvatarCatalog.All)
+                    {
+                        <button type="button"
+                                class="avatar-option @(_avatarId == a.Id ? "selected" : "")"
+                                @onclick="() => SelectPreset(a.Id)"
+                                title="@(Loc.Language == AppLanguage.Ru ? a.LabelRu : a.LabelEn)">
+                            @a.Glyph
+                        </button>
+                    }
+                    @if (_hasCustomFile)
+                    {
+                        <button type="button"
+                                class="avatar-option avatar-option-custom @(_avatarId == AvatarCatalog.CustomId ? "selected" : "")"
+                                @onclick="() => SelectPreset(AvatarCatalog.CustomId)"
+                                title="@Loc.T("auth.avatarCustom")">
+                            <img src="@AvatarCatalog.ImageUrl(_account.Id, _account.AvatarVersion)" alt="" />
+                        </button>
+                    }
+                </div>
+            </div>
+
+            @if (!string.IsNullOrEmpty(_message))
+            {
+                <p class="@(_ok ? "ok-banner" : "error-banner")">@_message</p>
+            }
+            <button class="btn primary" disabled="@_busy" @onclick="Save">@Loc.T("auth.save")</button>
+            <a class="btn ghost" href="/account/history">@Loc.T("auth.history")</a>
+            <a class="btn ghost" href="/api/auth/logout">@Loc.T("auth.logout")</a>
+        </section>
+    </div>
+}
+
+@code {
+    private PlayerAccount? _account;
+    private string _displayName = "";
+    private string _avatarId = "wolf";
+    private int _favCount;
+    private string? _message;
+    private bool _ok;
+    private bool _busy;
+    private bool _hasCustomFile;
+
+    private PlayerAccount? _previewAccount => _account is null
+        ? null
+        : new PlayerAccount
+        {
+            Id = _account.Id,
+            AvatarId = _avatarId,
+            AvatarVersion = _account.AvatarVersion,
+            DisplayName = _displayName,
+            Username = _account.Username
+        };
+
+    protected override async Task OnInitializedAsync()
+    {
+        _account = await Auth.GetCurrentAsync();
+        if (_account is null) return;
+        _displayName = _account.DisplayName;
+        _avatarId = _account.AvatarId;
+        _favCount = Store.FavoriteFactionMatchCount(_account.Id);
+        _hasCustomFile = Store.FindAvatarFile(_account.Id) is not null;
+    }
+
+    private void SelectPreset(string id)
+    {
+        _avatarId = id;
+        _message = null;
+    }
+
+    private async Task OnAvatarSelected(InputFileChangeEventArgs e)
+    {
+        if (_account is null) return;
+        _busy = true;
+        _message = null;
+        try
+        {
+            var file = e.File;
+            if (file.Size > AvatarCatalog.MaxUploadBytes)
+            {
+                _ok = false;
+                _message = Loc.T("auth.err.avatarSize");
+                return;
+            }
+
+            await using var stream = file.OpenReadStream(AvatarCatalog.MaxUploadBytes);
+            await using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            ms.Position = 0;
+
+            _account = Store.SaveCustomAvatar(_account.Id, ms, file.ContentType);
+            _avatarId = AvatarCatalog.CustomId;
+            _hasCustomFile = true;
+            _ok = true;
+            _message = Loc.T("auth.avatarUploaded");
+        }
+        catch (InvalidOperationException ex) when (ex.Message is "AvatarType" or "AvatarSize")
+        {
+            _ok = false;
+            _message = Loc.T(ex.Message == "AvatarType" ? "auth.err.avatarType" : "auth.err.avatarSize");
+        }
+        catch
+        {
+            _ok = false;
+            _message = Loc.T("auth.err.avatarUpload");
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private void Save()
+    {
+        if (_account is null) return;
+        try
+        {
+            _account = Store.UpdateProfile(_account.Id, _displayName, _avatarId);
+            _displayName = _account.DisplayName;
+            _avatarId = _account.AvatarId;
+            _favCount = Store.FavoriteFactionMatchCount(_account.Id);
+            _hasCustomFile = Store.FindAvatarFile(_account.Id) is not null;
+            _ok = true;
+            _message = Loc.T("auth.saved");
+        }
+        catch
+        {
+            _ok = false;
+            _message = Loc.T("auth.err.save");
+        }
+    }
+}

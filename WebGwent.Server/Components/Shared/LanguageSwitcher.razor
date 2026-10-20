@@ -1,0 +1,47 @@
+@inject LocaleService Loc
+@inject IJSRuntime Js
+@implements IDisposable
+
+<div class="lang-switch" title="@Loc.T("lang.label")">
+    <button type="button"
+            class="lang-btn @(Loc.Language == AppLanguage.Ru ? "active" : "")"
+            @onclick="() => Set(AppLanguage.Ru)">@Loc.T("lang.ru")</button>
+    <button type="button"
+            class="lang-btn @(Loc.Language == AppLanguage.En ? "active" : "")"
+            @onclick="() => Set(AppLanguage.En)">@Loc.T("lang.en")</button>
+</div>
+
+@code {
+    protected override void OnInitialized() => Loc.Changed += OnChanged;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            var saved = await Js.InvokeAsync<string?>("localStorage.getItem", "webgwent.lang");
+            if (string.Equals(saved, "en", StringComparison.OrdinalIgnoreCase))
+                Loc.SetLanguage(AppLanguage.En);
+            else if (string.Equals(saved, "ru", StringComparison.OrdinalIgnoreCase))
+                Loc.SetLanguage(AppLanguage.Ru);
+        }
+        catch
+        {
+            /* localStorage may be unavailable during prerender */
+        }
+    }
+
+    private async Task Set(AppLanguage lang)
+    {
+        Loc.SetLanguage(lang);
+        try
+        {
+            await Js.InvokeVoidAsync("localStorage.setItem", "webgwent.lang", lang == AppLanguage.Ru ? "ru" : "en");
+        }
+        catch { /* ignore */ }
+    }
+
+    private void OnChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Loc.Changed -= OnChanged;
+}

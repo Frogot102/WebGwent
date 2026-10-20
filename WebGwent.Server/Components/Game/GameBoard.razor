@@ -1,0 +1,620 @@
+@inject LocaleService Loc
+@inject IJSRuntime Js
+@implements IDisposable
+
+@if (View is null)
+{
+    <p class="muted">@Loc.T("board.noMatch")</p>
+    return;
+}
+
+<div class="board @(InputLocked ? "bot-thinking" : "")">
+    <div class="board-topbar">
+        <div>
+            <strong>@Loc.T("board.round", View.RoundNumber)</strong>
+            <span class="gems">@Loc.T("board.you") @Gems(View.You.RoundWins) — @Loc.T("board.opp") @Gems(View.Opponent.RoundWins)</span>
+        </div>
+        <div class="weather-bar">
+            <span class="wx frost @(View.MeleeWeather != WeatherEffect.None ? "active" : "")">@Loc.T("board.frost")</span>
+            <span class="wx fog @(View.RangedWeather != WeatherEffect.None ? "active" : "")">@Loc.T("board.fog")</span>
+            <span class="wx rain @(View.SiegeWeather != WeatherEffect.None ? "active" : "")">@Loc.T("board.rain")</span>
+        </div>
+        <div class="status">
+            @if (View.Phase == MatchPhase.MatchEnd)
+            {
+                <span class="winner">@(View.Winner == View.ViewerIndex ? Loc.T("board.victory") : Loc.T("board.defeat"))</span>
+            }
+            else if (View.Phase == MatchPhase.Mulligan)
+            {
+                <span>@Loc.T("board.mulligan", View.You.MulliganLeft)</span>
+            }
+            else if (View.Phase == MatchPhase.RoundEnd)
+            {
+                <span class="bot-status">@Loc.T("board.roundClearing")</span>
+            }
+            else if (InputLocked)
+            {
+                <span class="bot-status">@Loc.T("board.botThinking", View.Opponent.Name)</span>
+            }
+            else if (View.IsYourTurn)
+            {
+                <span class="your-turn">@Loc.T("board.yourTurn")</span>
+            }
+            else
+            {
+                <span>@Loc.T("board.waiting", View.Opponent.Name)</span>
+            }
+        </div>
+        <a class="link-back" href="/home">@Loc.T("board.menu")</a>
+    </div>
+
+    @if (!string.IsNullOrEmpty(Error))
+    {
+        <div class="error-banner">@Error</div>
+    }
+
+    @if (!string.IsNullOrEmpty(_toastText))
+    {
+        <div class="action-toast @(View.LastActionByOpponent ? "opp" : "you") @(_toastKey % 2 == 0 ? "pulse-a" : "pulse-b")" @key="_toastKey">
+            @_toastText
+        </div>
+    }
+
+    <div class="board-main">
+        @if (View.LastRound is not null && View.Phase != MatchPhase.MatchEnd && !_dismissRound)
+        {
+            <div class="round-banner @(View.LastRound.IsDraw ? "draw" : View.LastRound.YouWon ? "win" : "lose")">
+                <strong>@Loc.T("board.roundEnded", View.LastRound.RoundNumber)</strong>
+                <span>@View.LastRound.YourScore — @View.LastRound.OppScore</span>
+                <span>
+                    @if (View.LastRound.IsDraw) { @Loc.T("board.roundDraw") }
+                    else if (View.LastRound.YouWon) { @Loc.T("board.roundWin") }
+                    else { @Loc.T("board.roundLose") }
+                </span>
+                <button type="button" class="btn ghost tiny" @onclick="() => _dismissRound = true">OK</button>
+            </div>
+        }
+
+        <div class="battlefield tw3 @(View.Phase == MatchPhase.RoundEnd ? "round-clearing" : "")">
+            @* Left: power / hand / gems — Center: rows — Right: discard + deck (TW3 layout) *@
+            <aside class="meta-col opponent @(View.ActivePlayer == View.Opponent.Index && View.Phase == MatchPhase.Playing ? "turn-active" : "") @(InputLocked ? "acting" : "")">
+                <PlayerAvatar Profile="OppProfile" CssClass="meta-avatar" Size="52" />
+                <div class="meta-name">@(OppProfile?.DisplayName ?? View.Opponent.Name)</div>
+                <div class="meta-faction">@Loc.FactionName(View.Opponent.Faction)</div>
+                @if (OppProfile?.Rating is int oppRating)
+                {
+                    <div class="meta-rating" title="@Loc.T("auth.rating")">@oppRating</div>
+                }
+                else if (OppProfile?.IsBot == true)
+                {
+                    <div class="meta-rating bot">BOT</div>
+                }
+                <div class="meta-gems" title="@Loc.T("board.opp")">@Gems(View.Opponent.RoundWins)</div>
+                <div class="score-badge big" title="@Loc.T("board.power")">
+                    <span class="score-value">@View.Opponent.TotalScore</span>
+                </div>
+                @if (View.Opponent.HasPassed) { <span class="passed">@Loc.T("board.passed")</span> }
+                <div class="meta-hand" title="@Loc.T("board.hand")">
+                    <span class="meta-hand-icon" aria-hidden="true"></span>
+                    <span class="meta-hand-count">@View.Opponent.HandCount</span>
+                </div>
+            </aside>
+
+            <section class="field-col opponent">
+                @Row(Loc.T("row.siege"), CombatRow.Siege, View.Opponent.Siege, View.Opponent.HornRows.Contains(CombatRow.Siege), View.Opponent.SiegeScore, false)
+                @Row(Loc.T("row.ranged"), CombatRow.Ranged, View.Opponent.Ranged, View.Opponent.HornRows.Contains(CombatRow.Ranged), View.Opponent.RangedScore, false)
+                @Row(Loc.T("row.melee"), CombatRow.Melee, View.Opponent.Melee, View.Opponent.HornRows.Contains(CombatRow.Melee), View.Opponent.MeleeScore, false)
+            </section>
+
+            <aside class="meta-col you @(View.ActivePlayer == View.You.Index && View.Phase == MatchPhase.Playing ? "turn-active" : "")">
+                <PlayerAvatar Profile="YouProfile" CssClass="meta-avatar" Size="52" />
+                <div class="meta-name">@(YouProfile?.DisplayName ?? View.You.Name)</div>
+                <div class="meta-faction">@Loc.FactionName(View.You.Faction)</div>
+                @if (YouProfile?.Rating is int youRating)
+                {
+                    <div class="meta-rating" title="@Loc.T("auth.rating")">@youRating</div>
+                }
+                <div class="meta-gems" title="@Loc.T("board.you")">@Gems(View.You.RoundWins)</div>
+                <div class="score-badge big" title="@Loc.T("board.power")">
+                    <span class="score-value">@View.You.TotalScore</span>
+                </div>
+                @if (View.You.HasPassed) { <span class="passed">@Loc.T("board.passed")</span> }
+                <div class="meta-hand" title="@Loc.T("board.hand")">
+                    <span class="meta-hand-icon" aria-hidden="true"></span>
+                    <span class="meta-hand-count">@View.You.Hand.Count</span>
+                </div>
+            </aside>
+
+            <section class="field-col you">
+                @Row(Loc.T("row.melee"), CombatRow.Melee, View.You.Melee, View.You.HornRows.Contains(CombatRow.Melee), View.You.MeleeScore, true)
+                @Row(Loc.T("row.ranged"), CombatRow.Ranged, View.You.Ranged, View.You.HornRows.Contains(CombatRow.Ranged), View.You.RangedScore, true)
+                @Row(Loc.T("row.siege"), CombatRow.Siege, View.You.Siege, View.You.HornRows.Contains(CombatRow.Siege), View.You.SiegeScore, true)
+            </section>
+
+            <aside class="right-col">
+                <div class="pile-row opponent">
+                    <div class="card-pile pile-discard" data-pile="opp-discard" title="@Loc.T("board.discard")">
+                        <span class="pile-backs discard" aria-hidden="true"></span>
+                        <span class="pile-count">@View.Opponent.DiscardCount</span>
+                    </div>
+                    <div class="card-pile pile-deck" data-pile="opp-deck" title="@Loc.T("board.deck")">
+                        <span class="pile-backs" aria-hidden="true"></span>
+                        <span class="pile-count">@View.Opponent.DeckCount</span>
+                    </div>
+                </div>
+
+                <div class="card-inspect @(Inspected is not null ? "has-card" : "")">
+                    @if (Inspected is { } focus)
+                    {
+                        <div class="inspect-card faction-@focus.Faction.ToString().ToLowerInvariant() @(focus.IsHero ? "hero" : "") @(focus.Type == CardType.Special ? "special" : "")">
+                            <div class="inspect-banner">
+                                <span class="inspect-strength">@(focus.Type == CardType.Unit ? focus.CurrentStrength.ToString() : "★")</span>
+                                @if (focus.Type == CardType.Unit && focus.Row != CombatRow.None)
+                                {
+                                    <span class="inspect-row">@Loc.Row(focus.Row)</span>
+                                }
+                            </div>
+                            <div class="inspect-body">
+                                <h3 class="inspect-name">@Loc.CardName(focus.Name)</h3>
+                                <p class="inspect-faction">@Loc.FactionName(focus.Faction)</p>
+                                <div class="inspect-abilities">
+                                    @foreach (var a in focus.Abilities.Where(x => x != Ability.None))
+                                    {
+                                        <div class="inspect-ability">
+                                            <strong>@Loc.Ability(a)</strong>
+                                        </div>
+                                    }
+                                </div>
+                                @{
+                                    // One body text: card-specific catalog line wins over generic ability blurbs
+                                    // (e.g. Villentretenmerth Scorch ≠ board-wide Scorch).
+                                    var blurb = Loc.CardDescription(focus.Description, focus.Abilities);
+                                }
+                                @if (!string.IsNullOrEmpty(blurb))
+                                {
+                                    <p class="inspect-desc">@blurb</p>
+                                }
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="inspect-empty">@Loc.T("board.inspectHint")</p>
+                    }
+                </div>
+
+                <div class="pile-row you">
+                    <div class="card-pile pile-discard" data-pile="you-discard" title="@Loc.T("board.discard")" @onclick="() => _showDiscard = !_showDiscard">
+                        <span class="pile-backs discard" aria-hidden="true"></span>
+                        <span class="pile-count">@View.You.DiscardCount</span>
+                    </div>
+                    <div class="card-pile pile-deck" data-pile="you-deck" title="@Loc.T("board.deck")">
+                        <span class="pile-backs" aria-hidden="true"></span>
+                        <span class="pile-count">@View.You.DeckCount</span>
+                    </div>
+                </div>
+            </aside>
+        </div>
+
+        @if (View.Pending is not null && View.Pending.PlayerIndex == View.ViewerIndex && !InputLocked)
+        {
+            <div class="pending-panel @(View.Pending.Kind == PendingKind.ChooseDecoyTarget ? "decoy-mode" : "") @(View.Pending.Kind == PendingKind.ChooseMedicTarget ? "medic-mode" : "")">
+                @if (View.Pending.Kind == PendingKind.ChooseDecoyTarget)
+                {
+                    <p>@Loc.T("board.pending.decoyBoard")</p>
+                }
+                else
+                {
+                    <p>@PendingLabel(View.Pending.Kind)</p>
+                }
+                @if (View.Pending.Kind == PendingKind.ChooseAgileRow)
+                {
+                    <div class="pending-actions">
+                        <button class="btn" @onclick="() => Resolve(null, CombatRow.Melee)">@Loc.T("row.melee")</button>
+                        <button class="btn" @onclick="() => Resolve(null, CombatRow.Ranged)">@Loc.T("row.ranged")</button>
+                    </div>
+                }
+                else if (View.Pending.Kind == PendingKind.ChooseWhoStarts)
+                {
+                    <div class="pending-actions">
+                        <button class="btn" @onclick="() => ChooseStart(View.ViewerIndex)">@Loc.T("board.iStart")</button>
+                        <button class="btn" @onclick="() => ChooseStart(1 - View.ViewerIndex)">@Loc.T("board.oppStarts")</button>
+                    </div>
+                }
+                else if (View.Pending.Kind == PendingKind.ChooseMedicTarget)
+                {
+                    <div class="card-row pending-targets">
+                        @foreach (var id in View.Pending.ValidTargets)
+                        {
+                            var card = FindTargetCard(id);
+                            if (card is null) { continue; }
+                            <GwentCard Card="card" OnSelected="c => Resolve(c.InstanceId, null)" />
+                        }
+                    </div>
+                    <button class="btn ghost" @onclick="() => Resolve(null, null)">@Loc.T("board.skip")</button>
+                }
+            </div>
+        }
+
+        <div class="hand-panel @(InputLocked ? "locked" : "")">
+            <div class="hand-actions">
+                @if (View.Phase == MatchPhase.Mulligan)
+                {
+                    <button class="btn" disabled="@(InputLocked || View.You.MulliganLeft <= 0 || _selected is null)" @onclick="DoMulligan">@Loc.T("board.replace")</button>
+                    <button class="btn primary" disabled="@InputLocked" @onclick="FinishMulligan">@Loc.T("board.ready")</button>
+                }
+                else
+                {
+                    <button class="btn primary" disabled="@(!CanAct || _selected is null)" @onclick="PlaySelected">@Loc.T("board.play")</button>
+                    <button class="btn" disabled="@(!CanAct)" @onclick="Pass">@Loc.T("board.pass")</button>
+                    <button class="btn ghost" disabled="@(!CanAct || View.You.LeaderUsed)" @onclick="UseLeader" title="@View.You.LeaderName">@Loc.T("board.leader")</button>
+                }
+                @if (_selected?.Abilities.Contains(Ability.Agile) == true)
+                {
+                    <label>@Loc.T("board.row")
+                        <select @bind="_agileRow" disabled="@InputLocked">
+                            <option value="@CombatRow.Melee">@Loc.T("row.melee")</option>
+                            <option value="@CombatRow.Ranged">@Loc.T("row.ranged")</option>
+                        </select>
+                    </label>
+                }
+            </div>
+            <div class="card-row hand">
+                @foreach (var card in View.You.Hand)
+                {
+                    <GwentCard Card="card"
+                               Selected="@(_selected?.InstanceId == card.InstanceId)"
+                               Disabled="@InputLocked"
+                               OnSelected="SelectCard" />
+                }
+            </div>
+        </div>
+
+        @if (_showDiscard)
+        {
+            <div class="discard-drawer">
+                <div class="discard-drawer-head">
+                    <strong>@Loc.T("board.showDiscard", View.You.DiscardCount)</strong>
+                    <button type="button" class="btn ghost tiny" @onclick="() => _showDiscard = false">OK</button>
+                </div>
+                <div class="card-row pending-targets">
+                    @foreach (var c in View.You.Discard.Take(16))
+                    {
+                        <GwentCard Card="c" Disabled="true" />
+                    }
+                </div>
+            </div>
+        }
+
+        <aside class="log-strip">
+            <strong>@Loc.T("board.log")</strong>
+            <span class="log-line">@(View.LastMessage ?? "")</span>
+            <details>
+                <summary>…</summary>
+                <ul>
+                    @foreach (var line in View.Log.AsEnumerable().Reverse().Take(10))
+                    {
+                        <li>@line</li>
+                    }
+                </ul>
+            </details>
+        </aside>
+    </div>
+
+    @if (View.Phase == MatchPhase.MatchEnd)
+    {
+        <div class="match-overlay">
+            <div class="match-modal wide">
+                <h2>@(View.Winner == View.ViewerIndex ? Loc.T("board.victory") : Loc.T("board.defeat"))</h2>
+                <p class="gems">@Loc.T("board.you") @Gems(View.You.RoundWins) — @Loc.T("board.opp") @Gems(View.Opponent.RoundWins)</p>
+                @if (View.RoundHistory.Count > 0)
+                {
+                    <div class="round-history">
+                        <h3>@Loc.T("board.roundHistory")</h3>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th></th>
+                                    <th>@Loc.T("board.scoreYou")</th>
+                                    <th>@Loc.T("board.scoreOpp")</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var r in View.RoundHistory)
+                                {
+                                    <tr class="@(r.IsDraw ? "draw" : r.YouWon ? "win" : "lose")">
+                                        <td>@Loc.T("board.roundN", r.RoundNumber)</td>
+                                        <td class="num">@r.YourScore</td>
+                                        <td class="num">@r.OppScore</td>
+                                        <td class="res">
+                                            @if (r.IsDraw) { @Loc.T("board.roundResultDraw") }
+                                            else if (r.YouWon) { @Loc.T("board.roundResultWin") }
+                                            else { @Loc.T("board.roundResultLose") }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+                <div class="match-actions">
+                    <a class="btn primary" href="/home">@Loc.T("board.menu")</a>
+                    <a class="btn ghost" href="/play/bot">@Loc.T("board.playAgain")</a>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public MatchView? View { get; set; }
+    [Parameter] public BoardProfile? YouProfile { get; set; }
+    [Parameter] public BoardProfile? OppProfile { get; set; }
+    [Parameter] public string? Error { get; set; }
+    [Parameter] public bool InputLocked { get; set; }
+    [Parameter] public EventCallback<Guid> OnMulligan { get; set; }
+    [Parameter] public EventCallback OnFinishMulligan { get; set; }
+    [Parameter] public EventCallback<(Guid CardId, CombatRow? Row, Guid? Target)> OnPlay { get; set; }
+    [Parameter] public EventCallback OnPass { get; set; }
+    [Parameter] public EventCallback OnUseLeader { get; set; }
+    [Parameter] public EventCallback<(Guid? Target, CombatRow? Row)> OnResolvePending { get; set; }
+    [Parameter] public EventCallback<int> OnChooseStart { get; set; }
+
+    private CardView? _selected;
+    private CardView? _inspected;
+    private CombatRow _agileRow = CombatRow.Melee;
+    private bool _showDiscard;
+    private bool _dismissRound;
+    private int _seenRoundBanner = -1;
+    private string? _lastToastSource;
+    private string? _toastText;
+    private int _toastKey;
+    private Guid? _lastFlyCardId;
+    private Guid? _lastInspectedPlayId;
+
+    private CardView? Inspected => _inspected ?? _selected;
+
+    private bool CanAct =>
+        !InputLocked
+        && View is not null
+        && View.IsYourTurn
+        && View.Phase == MatchPhase.Playing
+        && View.Pending is null;
+
+    protected override void OnInitialized() => Loc.Changed += OnLangChanged;
+
+    protected override void OnParametersSet()
+    {
+        if (View?.LastRound is { } rr && rr.RoundNumber != _seenRoundBanner)
+        {
+            _seenRoundBanner = rr.RoundNumber;
+            _dismissRound = false;
+        }
+
+        // When opponent plays, show that card in the inspect panel (TW3-style).
+        if (View?.LastPlayedCardId is Guid played
+            && played != _lastInspectedPlayId
+            && View.LastActionByOpponent)
+        {
+            _lastInspectedPlayId = played;
+            _inspected = FindBoardCard(played) ?? _inspected;
+        }
+
+        UpdateToast();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (View?.LastPlayedCardId is Guid id
+            && id != _lastFlyCardId
+            && View.Phase == MatchPhase.Playing)
+        {
+            _lastFlyCardId = id;
+            try
+            {
+                await Js.InvokeVoidAsync("webGwent.animatePlayedCard", id.ToString(), View.LastActionByOpponent);
+            }
+            catch (JSException)
+            {
+                /* script not ready / prerender */
+            }
+        }
+    }
+
+    private void UpdateToast()
+    {
+        if (View is null) return;
+
+        // Never flash engine log lines (mulligan etc.) — only real play actions.
+        if (View.Phase != MatchPhase.Playing)
+        {
+            _toastText = null;
+            _lastToastSource = null;
+            return;
+        }
+
+        var source = $"{View.LastPlayedCardId}|{View.LastActionPlayer}|{View.LastPlayedRow}|{View.LastMessage}";
+        if (source == _lastToastSource)
+            return;
+
+        string? next = null;
+        if (!string.IsNullOrEmpty(View.LastPlayedCardName))
+        {
+            var who = View.LastActionByOpponent ? View.Opponent.Name : View.You.Name;
+            var card = Loc.CardName(View.LastPlayedCardName);
+            next = View.LastPlayedRow is CombatRow row and not CombatRow.None
+                ? Loc.T("board.toast.playedRow", who, card, RowLabel(row))
+                : Loc.T("board.toast.played", who, card);
+        }
+        else if (View.LastMessage?.Contains("passes", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            var who = View.LastActionByOpponent ? View.Opponent.Name : View.You.Name;
+            next = Loc.T("board.toast.passed", who);
+        }
+        else if (View.LastMessage?.Contains("used leader", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            var who = View.LastActionByOpponent ? View.Opponent.Name : View.You.Name;
+            next = Loc.T("board.toast.leader", who);
+        }
+
+        if (next is null)
+            return;
+
+        _lastToastSource = source;
+        _toastKey++;
+        _toastText = next;
+    }
+
+    private void OnLangChanged() => InvokeAsync(StateHasChanged);
+    public void Dispose() => Loc.Changed -= OnLangChanged;
+
+    private void SelectCard(CardView card)
+    {
+        _inspected = card;
+        if (!InputLocked)
+            _selected = card;
+    }
+
+    private async Task OnBoardCardClick(CardView card, bool canDecoy)
+    {
+        _inspected = card;
+        if (canDecoy)
+            await Resolve(card.InstanceId, null);
+    }
+
+    private CardView? FindBoardCard(Guid id)
+    {
+        if (View is null) return null;
+        return View.You.Melee.Concat(View.You.Ranged).Concat(View.You.Siege)
+            .Concat(View.Opponent.Melee).Concat(View.Opponent.Ranged).Concat(View.Opponent.Siege)
+            .FirstOrDefault(c => c.InstanceId == id);
+    }
+
+    private async Task PlaySelected()
+    {
+        if (_selected is null || !CanAct) return;
+        CombatRow? row = _selected.Abilities.Contains(Ability.Agile) ? _agileRow : null;
+        var id = _selected.InstanceId;
+        _selected = null;
+        try
+        {
+            await Js.InvokeVoidAsync("webGwent.rememberHandCard", id.ToString());
+        }
+        catch (JSException)
+        {
+            /* ignore */
+        }
+        await OnPlay.InvokeAsync((id, row, null));
+    }
+
+    private async Task DoMulligan()
+    {
+        if (_selected is null || InputLocked) return;
+        var id = _selected.InstanceId;
+        _selected = null;
+        await OnMulligan.InvokeAsync(id);
+    }
+
+    private Task FinishMulligan() => InputLocked ? Task.CompletedTask : OnFinishMulligan.InvokeAsync();
+    private Task Pass() => CanAct ? OnPass.InvokeAsync() : Task.CompletedTask;
+    private Task UseLeader() => CanAct ? OnUseLeader.InvokeAsync() : Task.CompletedTask;
+    private Task Resolve(Guid? target, CombatRow? row) => OnResolvePending.InvokeAsync((target, row));
+    private Task ChooseStart(int who) => OnChooseStart.InvokeAsync(who);
+
+    private CardView? FindTargetCard(Guid id)
+    {
+        if (View is null) return null;
+        return View.You.Discard.FirstOrDefault(c => c.InstanceId == id)
+               ?? View.You.Melee.FirstOrDefault(c => c.InstanceId == id)
+               ?? View.You.Ranged.FirstOrDefault(c => c.InstanceId == id)
+               ?? View.You.Siege.FirstOrDefault(c => c.InstanceId == id);
+    }
+
+    private static string Gems(int wins) => string.Concat(Enumerable.Range(0, 2).Select(i => i < wins ? "◆" : "◇"));
+
+    private string PendingLabel(PendingKind kind) => kind switch
+    {
+        PendingKind.ChooseAgileRow => Loc.T("board.pending.agile"),
+        PendingKind.ChooseMedicTarget => Loc.T("board.pending.medic"),
+        PendingKind.ChooseDecoyTarget => Loc.T("board.pending.decoy"),
+        PendingKind.ChooseWhoStarts => Loc.T("board.pending.start"),
+        _ => Loc.T("board.pending.choose")
+    };
+
+    private string RowLabel(CombatRow row) => row switch
+    {
+        CombatRow.Melee => Loc.T("row.melee"),
+        CombatRow.Ranged => Loc.T("row.ranged"),
+        CombatRow.Siege => Loc.T("row.siege"),
+        _ => ""
+    };
+
+    private string WeatherLabel(WeatherEffect w) => w switch
+    {
+        WeatherEffect.Frost => Loc.T("board.frost"),
+        WeatherEffect.Fog => Loc.T("board.fog"),
+        WeatherEffect.Rain => Loc.T("board.rain"),
+        _ => ""
+    };
+
+    private bool DecoyPicking =>
+        View?.Pending is { Kind: PendingKind.ChooseDecoyTarget } p
+        && p.PlayerIndex == View.ViewerIndex
+        && !InputLocked;
+
+    private RenderFragment Row(string label, CombatRow row, List<CardView> cards, bool horn, int rowScore, bool dropTarget) => __builder =>
+    {
+        var weather = row switch
+        {
+            CombatRow.Melee => View!.MeleeWeather,
+            CombatRow.Ranged => View!.RangedWeather,
+            CombatRow.Siege => View!.SiegeWeather,
+            _ => WeatherEffect.None
+        };
+        var rowClass = row switch
+        {
+            CombatRow.Melee => "row-melee",
+            CombatRow.Ranged => "row-ranged",
+            CombatRow.Siege => "row-siege",
+            _ => ""
+        };
+        var weatherFx = weather switch
+        {
+            WeatherEffect.Frost => "wx-frost",
+            WeatherEffect.Fog => "wx-fog",
+            WeatherEffect.Rain => "wx-rain",
+            _ => ""
+        };
+        var justHit = View!.LastPlayedRow == row && View.LastPlayedCardId is not null;
+        var weathered = weather != WeatherEffect.None;
+        var decoyOnThisSide = DecoyPicking && dropTarget;
+        <div class="combat-row @rowClass @weatherFx @(weathered ? "weathered" : "") @(horn ? "horn" : "") @(justHit ? "row-just-hit" : "") @(dropTarget && _selected is not null ? "droppable" : "") @(decoyOnThisSide ? "decoy-pick" : "")">
+            @if (weathered)
+            {
+                <div class="weather-overlay" aria-hidden="true"></div>
+                <span class="weather-pill">@WeatherLabel(weather)</span>
+            }
+            <div class="row-score" title="@label">@rowScore</div>
+            <div class="horn-slot @(horn ? "filled" : "")" title="@(horn ? Loc.T("board.horn") : "")">
+                @if (horn)
+                {
+                    <span class="horn-badge">♪</span>
+                }
+            </div>
+            <div class="card-row">
+                @foreach (var c in cards)
+                {
+                    var boardCard = c;
+                    var canPick = decoyOnThisSide && View!.Pending!.ValidTargets.Contains(boardCard.InstanceId);
+                    <GwentCard Card="boardCard"
+                               Disabled="false"
+                               Targetable="@canPick"
+                               Dimmed="@(decoyOnThisSide && !canPick)"
+                               JustPlayed="@(View?.LastPlayedCardId == boardCard.InstanceId)"
+                               OnSelected="picked => OnBoardCardClick(picked, canPick)" />
+                }
+            </div>
+        </div>
+    };
+}
