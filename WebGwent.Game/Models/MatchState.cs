@@ -25,6 +25,9 @@ public sealed class MatchState
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
     public DateTime LastActionUtc { get; set; } = DateTime.UtcNow;
 
+    /// <summary>Both players lost their last crystal in the same round.</summary>
+    public bool IsDraw => Phase == MatchPhase.MatchEnd && Winner is null;
+
     public PlayerState CurrentPlayer => Players[ActivePlayer];
     public PlayerState Opponent => Players[1 - ActivePlayer];
 
@@ -93,6 +96,16 @@ public sealed class PendingAction
     public Guid SourceCardId { get; init; }
     public List<Guid> ValidTargets { get; set; } = [];
     public List<CombatRow> ValidRows { get; set; } = [];
+    /// <summary>How many more picks this action needs (Eredin: Destroyer of Worlds discards two).</summary>
+    public int Remaining { get; set; } = 1;
+
+    /// <summary>Whether the player may resolve it without picking anything.</summary>
+    public bool CanSkip => Kind is PendingKind.ChooseMedicTarget
+        or PendingKind.RevealOpponentCards
+        or PendingKind.ChooseOwnDiscardCard
+        or PendingKind.ChooseEnemyDiscardCard
+        or PendingKind.ChooseDeckCard
+        or PendingKind.ChooseDeckWeather;
 
     public PendingAction Clone() => new()
     {
@@ -100,7 +113,8 @@ public sealed class PendingAction
         PlayerIndex = PlayerIndex,
         SourceCardId = SourceCardId,
         ValidTargets = [.. ValidTargets],
-        ValidRows = [.. ValidRows]
+        ValidRows = [.. ValidRows],
+        Remaining = Remaining
     };
 }
 
@@ -109,6 +123,13 @@ public enum PendingKind
     ChooseAgileRow,
     ChooseMedicTarget,
     ChooseDecoyTarget,
-    ChooseScorchRow, // unused but reserved
-    ChooseWhoStarts
+    ChooseWhoStarts,
+    ChooseHornRow,
+    ChooseMardroemeRow,
+    ChooseOwnDiscardCard,    // Eredin: Bringer of Death
+    ChooseEnemyDiscardCard,  // Emhyr: The Relentless
+    ChooseHandDiscard,       // Eredin: Destroyer of Worlds, step 1
+    ChooseDeckCard,          // Eredin: Destroyer of Worlds, step 2
+    ChooseDeckWeather,       // Eredin: King of the Wild Hunt
+    RevealOpponentCards      // Emhyr: Emperor of Nilfgaard
 }

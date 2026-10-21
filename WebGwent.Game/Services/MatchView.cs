@@ -26,10 +26,13 @@ public sealed class MatchView
     public WeatherEffect RangedWeather { get; init; }
     public WeatherEffect SiegeWeather { get; init; }
     public PendingAction? Pending { get; init; }
+    /// <summary>Cards the viewer can pick for their own pending action (discard, deck, revealed hand…).</summary>
+    public List<CardView> PendingOptions { get; init; } = [];
     public PlayerView You { get; init; } = null!;
     public PlayerView Opponent { get; init; } = null!;
     public List<string> Log { get; init; } = [];
     public bool IsYourTurn { get; init; }
+    public bool IsDraw => Phase == MatchPhase.MatchEnd && Winner is null;
     public bool LastActionByOpponent => LastActionPlayer is int a && a != ViewerIndex;
 
     public static MatchView From(MatchState match, int viewerIndex)
@@ -76,7 +79,10 @@ public sealed class MatchView
             MeleeWeather = match.MeleeWeather,
             RangedWeather = match.RangedWeather,
             SiegeWeather = match.SiegeWeather,
-            Pending = match.Pending,
+            Pending = match.Pending is { } pending && pending.PlayerIndex != viewerIndex
+                ? new PendingAction { Kind = pending.Kind, PlayerIndex = pending.PlayerIndex, Remaining = pending.Remaining }
+                : match.Pending?.Clone(),
+            PendingOptions = BuildPendingOptions(match, viewerIndex),
             Log = [.. match.Log],
             IsYourTurn = match.Phase == MatchPhase.Playing && match.ActivePlayer == viewerIndex && match.Pending is null
                          || match.Pending?.PlayerIndex == viewerIndex
@@ -84,6 +90,27 @@ public sealed class MatchView
             You = PlayerView.From(you, match, hideHand: false),
             Opponent = PlayerView.From(opp, match, hideHand: true)
         };
+    }
+
+    private static List<CardView> BuildPendingOptions(MatchState match, int viewerIndex)
+    {
+        if (match.Pending is not { } pending || pending.PlayerIndex != viewerIndex)
+            return [];
+
+        var options = new List<CardView>();
+        foreach (var id in pending.ValidTargets)
+        {
+            foreach (var p in match.Players)
+            {
+                var card = p.Hand.Concat(p.Deck).Concat(p.Discard).Concat(p.AllBoardCards())
+                    .FirstOrDefault(c => c.InstanceId == id);
+                if (card is null) continue;
+                options.Add(CardView.From(card, p, match));
+                break;
+            }
+        }
+
+        return options;
     }
 }
 
@@ -102,10 +129,14 @@ public sealed class PlayerView
     public string Name { get; init; } = "";
     public Faction Faction { get; init; }
     public int RoundWins { get; init; }
+    public int Lives { get; init; }
     public bool HasPassed { get; init; }
     public bool LeaderUsed { get; init; }
+    public bool LeaderCancelled { get; init; }
+    public bool LeaderPassive { get; init; }
     public string? LeaderName { get; init; }
     public string? LeaderId { get; init; }
+    public string? LeaderDescription { get; init; }
     public int HandCount { get; init; }
     public int DeckCount { get; init; }
     public int DiscardCount { get; init; }
@@ -137,10 +168,14 @@ public sealed class PlayerView
             Name = p.Name,
             Faction = p.Faction,
             RoundWins = p.RoundWins,
+            Lives = p.Lives,
             HasPassed = p.HasPassed,
             LeaderUsed = p.LeaderUsed,
+            LeaderCancelled = p.LeaderCancelled,
+            LeaderPassive = p.Leader is not null && LeaderAbilities.IsPassive(p.Leader.LeaderAbility),
             LeaderName = p.Leader?.Name,
             LeaderId = p.Leader?.DefinitionId,
+            LeaderDescription = p.Leader?.Description,
             HandCount = p.Hand.Count,
             DeckCount = p.Deck.Count,
             DiscardCount = p.Discard.Count,
@@ -154,7 +189,7 @@ public sealed class PlayerView
             Ranged = p.Rows[CombatRow.Ranged].Select(c => CardView.From(c, p, match)).ToList(),
             Siege = p.Rows[CombatRow.Siege].Select(c => CardView.From(c, p, match)).ToList(),
             Discard = p.Discard.Select(c => CardView.From(c, p, match)).ToList(),
-            HornRows = [.. p.HornRows]
+            HornRows = RulesEngine.BoardRows.Where(r => ScoreCalculator.HasHorn(p, r)).ToHashSet()
         };
     }
 }

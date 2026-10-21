@@ -33,6 +33,7 @@ public static class CardLocalizer
         ["Bovine Defense Force"] = "Бычья сила",
 
         ["Foltest: Lord Commander of the North"] = "Фольтест: Верховный главнокомандующий Севера",
+        ["Foltest: The Siegemaster"] = "Фольтест: Мастер осады",
         ["Foltest: King of Temeria"] = "Фольтест: Король Темерии",
         ["Foltest: Son of Medell"] = "Фольтест: Сын Меделла",
         ["Foltest: The Steel-Forged"] = "Фольтест: Стальной",
@@ -96,6 +97,7 @@ public static class CardLocalizer
         ["Francesca Findabair: Hope of the Aen Seidhe"] = "Францеска Финдабаир: Надежда Aen Seidhe",
         ["Francesca Findabair: Queen of Dol Blathanna"] = "Францеска Финдабаир: Королева Доль Блатанны",
         ["Francesca Findabair: Pureblood Elf"] = "Францеска Финдабаир: Чистокровная эльфийка",
+        ["Francesca Findabair: The Beautiful"] = "Францеска Финдабаир: Прекраснейшая",
         ["Eithné"] = "Эйтнэ",
         ["Iorveth"] = "Йорвет",
         ["Isengrim Faoiltiarna"] = "Изенгрим Фаоильтиарна",
@@ -169,6 +171,8 @@ public static class CardLocalizer
         ["Clan Drummond Shield Maiden"] = "Щитоносица клана Драммонд",
         ["Berserker"] = "Берсерк",
         ["Young Berserker"] = "Юный берсерк",
+        ["Vildkaarl"] = "Вильдкаарл",
+        ["Young Vildkaarl"] = "Юный вильдкаарл",
         ["Clan Dimun Pirate"] = "Пират клана Димун",
         ["Clan an Craite Warrior"] = "Воин клана ан Крайт",
         ["Clan Brokvar Archer"] = "Лучник клана Броквар",
@@ -264,18 +268,62 @@ public static class CardLocalizer
             "Удваивает силу всех не-героев в ряду.",
         ["Destroy the strongest non-Hero unit(s) on the board."] =
             "Уничтожает сильнейшего не-героя (или нескольких с равной силой) на поле.",
-        ["Triggers Berserker transformations."] =
-            "Запускает превращение берсерков на поле.",
-        ["Destroy the strongest Melee unit(s) if strength is 10+."] =
-            "Уничтожает сильнейших юнитов ближнего ряда, если их сила ≥ 10.",
+        ["Choose a row: Berserkers there transform into Vildkaarls."] =
+            "Выберите ряд: берсерки в нём превращаются в вильдкаарлов.",
+        ["Destroy the enemy's strongest Close Combat unit(s) if their Close Combat row totals 10 or more."] =
+            "Уничтожает сильнейших юнитов ближнего боя врага, если сила его ближнего ряда ≥ 10.",
+        ["Destroy the enemy's strongest Siege unit(s) if their Siege row totals 10 or more."] =
+            "Уничтожает сильнейших осадных юнитов врага, если сила его осадного ряда ≥ 10.",
+        ["Destroy the enemy's strongest Ranged unit(s) if their Ranged row totals 10 or more."] =
+            "Уничтожает сильнейших юнитов дальнего боя врага, если сила его дальнего ряда ≥ 10.",
         ["When destroyed, summon Bovine Defense Force."] =
             "При уничтожении призывает Бычью силу.",
-        ["Horn on Siege row."] =
-            "Рог на осадный ряд.",
-        ["Destroy the strongest non-Hero Ranged unit(s) on the enemy side."] =
-            "Уничтожает сильнейшего не-героя дальнего ряда у врага.",
-        ["Destroy the strongest non-Hero Siege unit(s) on the enemy side."] =
-            "Уничтожает сильнейшего не-героя осады у врага.",
+        ["When destroyed, summon Hemdall."] =
+            "При уничтожении призывает Хемдалля.",
+        ["Commander's Horn: doubles the other non-Hero units in his row."] =
+            "Командирский рог: удваивает силу остальных не-героев в его ряду.",
+        ["Mardroeme: Berserkers in his row transform into Vildkaarls."] =
+            "Мардроеме: берсерки в его ряду превращаются в вильдкаарлов.",
+        ["Transforms into Vildkaarl (14, Morale Boost) when Mardroeme affects its row."] =
+            "Превращается в Вильдкаарла (14, Моральный подъём), когда на его ряд действует Мардроеме.",
+        ["Transforms into Young Vildkaarl (8, Tight Bond) when Mardroeme affects its row."] =
+            "Превращается в Юного вильдкаарла (8, Сплочённость), когда на его ряд действует Мардроеме.",
+
+        // Leaders
+        ["Doubles the strength of all your Siege units (unless a Commander's Horn is already in that row)."] =
+            "Удваивает силу ваших осадных юнитов (если в ряду ещё нет Командирского рога).",
+        ["Doubles the strength of all your Ranged units (unless a Commander's Horn is already in that row)."] =
+            "Удваивает силу ваших юнитов дальнего боя (если в ряду ещё нет Командирского рога).",
+        ["Doubles the strength of all your Close Combat units (unless a Commander's Horn is already in that row)."] =
+            "Удваивает силу ваших юнитов ближнего боя (если в ряду ещё нет Командирского рога).",
+        ["Pick an Impenetrable Fog card from your deck and play it instantly."] =
+            "Достаёт из колоды Непроглядный туман и сразу играет его.",
+        ["Pick a Torrential Rain card from your deck and play it instantly."] =
+            "Достаёт из колоды Ливень и сразу играет его.",
+        ["Pick a Biting Frost card from your deck and play it instantly."] =
+            "Достаёт из колоды Лютый мороз и сразу играет его.",
+        ["Pick any weather card from your deck and play it instantly."] =
+            "Достаёт из колоды любую карту погоды и сразу играет её.",
+        ["Clear any weather effects in play."] =
+            "Снимает все эффекты погоды.",
+        ["Passive: cancels your opponent's Leader Ability."] =
+            "Пассивно: отменяет способность лидера соперника.",
+        ["Draw a card from your opponent's discard pile."] =
+            "Берёт в руку карту из сброса соперника.",
+        ["Look at 3 random cards from your opponent's hand."] =
+            "Показывает 3 случайные карты из руки соперника.",
+        ["Passive: draw an extra card at the beginning of the battle."] =
+            "Пассивно: в начале битвы вы берёте дополнительную карту.",
+        ["Move Agile units to whichever valid row maximizes their strength."] =
+            "Переставляет ловких юнитов в ряд, где их сила больше.",
+        ["Discard 2 cards and draw 1 card of your choice from your deck."] =
+            "Сбросьте 2 карты и возьмите из колоды 1 карту на выбор.",
+        ["Restore a card from your discard pile to your hand."] =
+            "Возвращает в руку карту из вашего сброса.",
+        ["Shuffle all cards from each player's discard pile back into their decks."] =
+            "Замешивает сбросы обоих игроков обратно в их колоды.",
+        ["Passive: your units only lose half their strength in bad weather."] =
+            "Пассивно: в плохую погоду ваши юниты теряют только половину силы.",
     };
 
     public static string CardName(string englishName, AppLanguage language)

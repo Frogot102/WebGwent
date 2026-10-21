@@ -21,7 +21,7 @@ public class AbilityTests
     }
 
     [Fact]
-    public void Muster_Pulls_Group_From_Hand_And_Deck()
+    public void Muster_Pulls_Group_From_Deck_Only()
     {
         var match = ReadyMatch();
         var p = match.Players[0];
@@ -38,7 +38,10 @@ public class AbilityTests
         p.Deck.Add(c);
 
         _engine.PlayCard(match, 0, a.InstanceId);
-        Assert.Equal(3, p.Rows[CombatRow.Melee].Count(x => x.MusterGroup == "HavekarSmuggler"));
+        // TW3: the copy in the deck joins, the copy in hand stays in hand.
+        Assert.Equal(2, p.Rows[CombatRow.Melee].Count(x => x.MusterGroup == "HavekarSmuggler"));
+        Assert.Contains(p.Hand, x => x.InstanceId == b.InstanceId);
+        Assert.Empty(p.Deck);
     }
 
     [Fact]
@@ -91,8 +94,14 @@ public class AbilityTests
         match.ActivePlayer = p.Index;
         _engine.PlayCard(match, p.Index, horn.InstanceId);
 
+        // The player picks the row.
+        Assert.Equal(PendingKind.ChooseHornRow, match.Pending!.Kind);
+        Assert.Equal(3, match.Pending.ValidRows.Count);
+        _engine.ResolvePending(match, p.Index, row: CombatRow.Melee);
+
         Assert.Contains(CombatRow.Melee, p.HornRows);
         Assert.Equal(10, ScoreCalculator.GetCardStrength(unit, p, match));
+        Assert.Contains(p.Discard, c => c.InstanceId == horn.InstanceId);
     }
 
     [Fact]
@@ -113,7 +122,9 @@ public class AbilityTests
         p.Deck.Add(m2);
 
         _engine.PlayCard(match, 0, cerys.InstanceId);
-        Assert.Equal(3, p.Rows[CombatRow.Melee].Count(c => c.MusterGroup == "Cerys" || c.DefinitionId == "sk_cerys"));
+        // Only the Shield Maiden in the deck answers the call.
+        Assert.Equal(2, p.Rows[CombatRow.Melee].Count(c => c.MusterGroup == "Cerys" || c.DefinitionId == "sk_cerys"));
+        Assert.Contains(p.Hand, c => c.InstanceId == m1.InstanceId);
     }
 
     [Fact]
