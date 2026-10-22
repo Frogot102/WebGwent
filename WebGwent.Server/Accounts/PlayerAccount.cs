@@ -23,6 +23,17 @@ public sealed class PlayerAccount
     public int LossesVsBot { get; set; }
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
     public DateTime LastLoginUtc { get; set; } = DateTime.UtcNow;
+    public AccountRole Role { get; set; } = AccountRole.Player;
+    /// <summary>UTC end of WebGwent Plus. Null = never subscribed / expired cleared.</summary>
+    public DateTime? PlusUntilUtc { get; set; }
+
+    public bool HasPlus =>
+        Role == AccountRole.Admin
+        || (PlusUntilUtc is DateTime until && until > DateTime.UtcNow);
+
+    public bool ShowAds => !HasPlus;
+
+    public bool CanPlayOnline => HasPlus;
 }
 
 public sealed class MatchHistoryEntry
@@ -42,6 +53,8 @@ public sealed class MatchHistoryEntry
     public int RatingBefore { get; set; }
     public int RatingDelta { get; set; }
     public Guid MatchId { get; set; }
+    /// <summary>Bot difficulty when Mode is Bot; otherwise null/empty.</summary>
+    public string? BotDifficulty { get; set; }
 }
 
 public static class AvatarCatalog

@@ -120,3 +120,21 @@ public enum GameMode
     VsBot,
     Online
 }
+
+/// <summary>
+/// Bot strength. <see cref="High"/> is the current full AI (simulation + Monte Carlo look-ahead).
+/// <see cref="DeathMarch"/> is the same pipeline with a larger look-ahead budget (Witcher 3 difficulty name).
+/// </summary>
+public enum BotDifficulty
+{
+    Easy,
+    Medium,
+    High,
+    DeathMarch
+}
+
+public static class BotDifficultyRules
+{
+    public static bool RequiresPlus(BotDifficulty d) =>
+        d is BotDifficulty.High or BotDifficulty.DeathMarch;
+}
