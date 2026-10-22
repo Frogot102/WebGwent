@@ -488,6 +488,8 @@ public sealed class RulesEngine
 
         if (card.Abilities.Contains(Ability.Scorch))
             ScorchEnemyRowIfStrong(match, player, row);
+        if (card.Abilities.Contains(Ability.ScorchBattlefield))
+            GlobalScorch(match, spare: card);
 
         if (card.Abilities.Contains(Ability.Mardroeme))
             boardOwner.MardroemeRows.Add(row);
@@ -499,7 +501,12 @@ public sealed class RulesEngine
                 .Where(c => c.Type == CardType.Unit && !c.IsHero)
                 .Select(c => c.InstanceId)
                 .ToList();
-            if (reviveTargets.Count > 0)
+            if (reviveTargets.Count > 0 && LeaderAbilities.IsActiveAnywhere(match, LeaderAbility.EmhyrInvader))
+            {
+                // Emhyr: Invader of the North — the revived unit is picked at random.
+                ReviveMedic(match, player, reviveTargets[_rng.Next(reviveTargets.Count)]);
+            }
+            else if (reviveTargets.Count > 0)
             {
                 match.Pending = new PendingAction
                 {
@@ -631,7 +638,8 @@ public sealed class RulesEngine
     }
 
     public static bool IsWeatherCard(CardInstance card) =>
-        card.Abilities.Any(a => a is Ability.WeatherFrost or Ability.WeatherFog or Ability.WeatherRain or Ability.WeatherClear);
+        card.Abilities.Any(a => a is Ability.WeatherFrost or Ability.WeatherFog or Ability.WeatherRain
+            or Ability.WeatherStorm or Ability.WeatherClear);
 
     private static void PlayWeatherCard(MatchState match, PlayerState player, CardInstance card)
     {
@@ -649,6 +657,12 @@ public sealed class RulesEngine
         {
             match.SiegeWeather = WeatherEffect.Rain;
             match.LastPlayedRow = CombatRow.Siege;
+        }
+        else if (card.Abilities.Contains(Ability.WeatherStorm))
+        {
+            match.RangedWeather = WeatherEffect.Storm;
+            match.SiegeWeather = WeatherEffect.Storm;
+            match.LastPlayedRow = CombatRow.Ranged;
         }
         else
         {
@@ -798,10 +812,11 @@ public sealed class RulesEngine
         }
     }
 
-    private void GlobalScorch(MatchState match)
+    /// <summary>Destroys the strongest non-Hero unit(s) on the whole battlefield (<paramref name="spare"/> excluded).</summary>
+    private void GlobalScorch(MatchState match, CardInstance? spare = null)
     {
         var all = match.Players.SelectMany(p => p.AllBoardCards().Select(c => (p, c)))
-            .Where(x => !x.c.IsHero && x.c.Type == CardType.Unit)
+            .Where(x => !x.c.IsHero && x.c.Type == CardType.Unit && x.c.InstanceId != spare?.InstanceId)
             .ToList();
         if (all.Count == 0) return;
 

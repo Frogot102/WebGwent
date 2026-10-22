@@ -44,7 +44,9 @@ public enum Ability
     WeatherClear,
     Berserker,
     Mardroeme,
-    SummonAvenger
+    SummonAvenger,
+    WeatherStorm,       // Skellige Storm: Ranged and Siege rows
+    ScorchBattlefield   // unit Scorch on the whole battlefield (Clan Dimun Pirate)
 }
 
 public enum LeaderAbility
@@ -63,6 +65,7 @@ public enum LeaderAbility
     EmhyrEmperor,           // look at 3 random cards in the opponent's hand
     EmhyrWhiteFlame,        // passive: cancels the opponent's leader ability
     EmhyrRelentless,        // take a card from the opponent's discard pile
+    EmhyrInvader,           // passive: Medics of both players revive a random unit
 
     // Scoia'tael — Francesca
     FrancescaPureblood,     // play Biting Frost from the deck
@@ -76,6 +79,7 @@ public enum LeaderAbility
     EredinBringer,          // return a card from your discard pile to your hand
     EredinDestroyer,        // discard 2 cards, then take any card from your deck
     EredinKing,             // play any weather card from the deck
+    EredinTreacherous,      // passive: spies of both players are twice as strong
 
     // Skellige
     CrachAnCraite,          // shuffle both discard piles back into the decks
@@ -85,7 +89,12 @@ public enum LeaderAbility
 public static class LeaderAbilities
 {
     public static bool IsPassive(LeaderAbility ability) =>
-        ability is LeaderAbility.EmhyrWhiteFlame or LeaderAbility.FrancescaDaisy or LeaderAbility.KingBran;
+        ability is LeaderAbility.EmhyrWhiteFlame or LeaderAbility.FrancescaDaisy or LeaderAbility.KingBran
+            or LeaderAbility.EmhyrInvader or LeaderAbility.EredinTreacherous;
+
+    /// <summary>Passive leader effect that applies to both players while its owner's leader isn't cancelled.</summary>
+    public static bool IsActiveAnywhere(MatchState match, LeaderAbility ability) =>
+        match.Players.Any(p => p.ActiveLeaderAbility == ability);
 }
 
 public enum MatchPhase
@@ -101,7 +110,8 @@ public enum WeatherEffect
     None,
     Frost,
     Fog,
-    Rain
+    Rain,
+    Storm
 }
 
 public enum GameMode
