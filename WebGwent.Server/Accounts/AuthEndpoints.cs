@@ -77,6 +77,7 @@ public static class AuthEndpoints
         {
             new(ClaimTypes.NameIdentifier, account.Id.ToString()),
             new(ClaimTypes.Name, account.Username),
+            new(ClaimTypes.Role, account.Role.ToString()),
             new(AccountAuthService.DisplayNameClaim, account.DisplayName),
             new(AccountAuthService.AvatarClaim, account.AvatarId)
         };

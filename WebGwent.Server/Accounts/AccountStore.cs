@@ -21,7 +21,7 @@ public sealed class AccountStore
     private List<PlayerAccount> _accounts = [];
     private List<MatchHistoryEntry> _matches = [];
 
-    public AccountStore(IWebHostEnvironment env)
+    public AccountStore(IWebHostEnvironment env, IConfiguration config)
     {
         _dir = Path.Combine(env.ContentRootPath, "App_Data");
         _avatarsDir = Path.Combine(_dir, "avatars");
@@ -30,6 +30,119 @@ public sealed class AccountStore
         _accountsPath = Path.Combine(_dir, "accounts.json");
         _matchesPath = Path.Combine(_dir, "matches.json");
         Reload();
+        EnsureSeedAdmin(config);
+    }
+
+    /// <summary>
+    /// Ensures the built-in admin account exists with Admin role and the known coursework password.
+    /// Config SeedAdmin can override username/password/display; defaults come from <see cref="BuiltInAdmin"/>.
+    /// </summary>
+    private void EnsureSeedAdmin(IConfiguration config)
+    {
+        lock (_lock)
+        {
+            var section = config.GetSection("SeedAdmin");
+            var username = string.IsNullOrWhiteSpace(section["Username"])
+                ? BuiltInAdmin.Username
+                : section["Username"]!.Trim();
+            var password = string.IsNullOrWhiteSpace(section["Password"])
+                ? BuiltInAdmin.Password
+                : section["Password"]!;
+            var display = string.IsNullOrWhiteSpace(section["DisplayName"])
+                ? BuiltInAdmin.DisplayName
+                : section["DisplayName"]!.Trim();
+
+            var (hash, salt) = PasswordHasher.Hash(password);
+            var existing = _accounts.FirstOrDefault(a =>
+                a.Username.Equals(username, StringComparison.OrdinalIgnoreCase));
+
+            if (existing is not null)
+            {
+                existing.Role = AccountRole.Admin;
+                existing.DisplayName = display;
+                existing.PasswordHash = hash;
+                existing.PasswordSalt = salt;
+                PersistAccounts();
+                return;
+            }
+
+            _accounts.Add(new PlayerAccount
+            {
+                Username = username,
+                DisplayName = display,
+                PasswordHash = hash,
+                PasswordSalt = salt,
+                Role = AccountRole.Admin
+            });
+            PersistAccounts();
+        }
+    }
+
+    public bool HasPlus(Guid accountId)
+    {
+        lock (_lock)
+        {
+            var acc = _accounts.FirstOrDefault(a => a.Id == accountId);
+            return acc is not null && AccHasPlus(acc);
+        }
+    }
+
+    private static bool AccHasPlus(PlayerAccount acc) =>
+        acc.Role == AccountRole.Admin
+        || (acc.PlusUntilUtc is DateTime until && until > DateTime.UtcNow);
+
+    public PlayerAccount GrantPlusDays(Guid accountId, int days)
+    {
+        if (days < 1) throw new InvalidOperationException("PlusDays");
+        lock (_lock)
+        {
+            var acc = _accounts.FirstOrDefault(a => a.Id == accountId)
+                      ?? throw new InvalidOperationException("NotFound");
+            var now = DateTime.UtcNow;
+            var baseTime = acc.PlusUntilUtc is DateTime cur && cur > now ? cur : now;
+            acc.PlusUntilUtc = baseTime.AddDays(days);
+            PersistAccounts();
+            return Clone(acc);
+        }
+    }
+
+    public PlayerAccount PurchasePlusMonths(Guid accountId, int months)
+    {
+        var safe = months is 3 or 12 ? months : 1;
+        return GrantPlusDays(accountId, safe * 30);
+    }
+
+    public IReadOnlyList<PlayerAccount> ListUsers()
+    {
+        lock (_lock)
+            return _accounts.OrderBy(a => a.Username).Select(Clone).ToList();
+    }
+
+    public PlayerAccount SetRole(Guid actorId, Guid targetId, AccountRole role)
+    {
+        lock (_lock)
+        {
+            var actor = _accounts.FirstOrDefault(a => a.Id == actorId)
+                        ?? throw new InvalidOperationException("Forbidden");
+            if (actor.Role != AccountRole.Admin)
+                throw new InvalidOperationException("Forbidden");
+
+            var target = _accounts.FirstOrDefault(a => a.Id == targetId)
+                         ?? throw new InvalidOperationException("NotFound");
+            if (target.Id == actor.Id)
+                throw new InvalidOperationException("Forbidden");
+
+            if (target.Role == AccountRole.Admin && role != AccountRole.Admin)
+            {
+                var admins = _accounts.Count(a => a.Role == AccountRole.Admin);
+                if (admins <= 1)
+                    throw new InvalidOperationException("LastAdmin");
+            }
+
+            target.Role = role;
+            PersistAccounts();
+            return Clone(target);
+        }
     }
 
     public void Reload()
@@ -261,7 +374,8 @@ public sealed class AccountStore
                 PlayerRoundWins = you.RoundWins,
                 OpponentRoundWins = opp.RoundWins,
                 RatingBefore = before,
-                RatingDelta = 0
+                RatingDelta = 0,
+                BotDifficulty = match.BotDifficulty.ToString()
             });
 
             RefreshFavoriteFaction(acc);
@@ -400,7 +514,9 @@ public sealed class AccountStore
         WinsVsBot = a.WinsVsBot,
         LossesVsBot = a.LossesVsBot,
         CreatedAtUtc = a.CreatedAtUtc,
-        LastLoginUtc = a.LastLoginUtc
+        LastLoginUtc = a.LastLoginUtc,
+        Role = a.Role,
+        PlusUntilUtc = a.PlusUntilUtc
     };
 
     private static MatchHistoryEntry CloneMatch(MatchHistoryEntry m) => new()
@@ -419,6 +535,7 @@ public sealed class AccountStore
         OpponentRoundWins = m.OpponentRoundWins,
         RatingBefore = m.RatingBefore,
         RatingDelta = m.RatingDelta,
-        MatchId = m.MatchId
+        MatchId = m.MatchId,
+        BotDifficulty = m.BotDifficulty
     };
 }

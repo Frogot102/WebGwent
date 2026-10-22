@@ -3,18 +3,23 @@
 @inject AccountAuthService Auth
 @implements IDisposable
 
-<div class="menu-shell">
+<div class="menu-shell @(_showAds ? "with-ads" : "")">
     <header class="menu-header">
         <a class="brand" href="/home">WebGwent</a>
         <nav>
             <a href="/home">@Loc.T("nav.play")</a>
             <a href="/decks">@Loc.T("nav.decks")</a>
+            <a href="/rules">@Loc.T("nav.rules")</a>
             <a href="/about">@Loc.T("nav.about")</a>
             @if (_account is not null)
             {
                 <a href="/account/profile" class="nav-account">
                     <PlayerAvatar Account="_account" CssClass="nav-avatar" Size="24" />
                     @_account.DisplayName
+                    @if (_account.HasPlus)
+                    {
+                        <span class="plus-pill">Plus</span>
+                    }
                     <span class="nav-rating">@_account.Rating</span>
                 </a>
                 <a href="/account/history">@Loc.T("auth.history")</a>
@@ -28,18 +33,40 @@
             <LanguageSwitcher />
         </nav>
     </header>
-    <main class="menu-main">
-        @Body
-    </main>
+    <div class="menu-body">
+        @if (_showAds)
+        {
+            <aside class="ad-rail ad-rail-left" aria-label="@Loc.T("ads.label")">
+                <div class="ad-slot">
+                    <span class="ad-kicker">@Loc.T("ads.label")</span>
+                    <p>@Loc.T("ads.slotLeft")</p>
+                </div>
+            </aside>
+        }
+        <main class="menu-main">
+            @Body
+        </main>
+        @if (_showAds)
+        {
+            <aside class="ad-rail ad-rail-right" aria-label="@Loc.T("ads.label")">
+                <div class="ad-slot">
+                    <span class="ad-kicker">@Loc.T("ads.label")</span>
+                    <p>@Loc.T("ads.slotRight")</p>
+                </div>
+            </aside>
+        }
+    </div>
 </div>
 
 @code {
     private PlayerAccount? _account;
+    private bool _showAds = true;
 
     protected override async Task OnInitializedAsync()
     {
         Loc.Changed += OnChanged;
         _account = await Auth.GetCurrentAsync();
+        _showAds = _account?.ShowAds ?? true;
     }
 
     private void OnChanged() => InvokeAsync(StateHasChanged);
