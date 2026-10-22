@@ -1,5 +1,6 @@
 ﻿@page "/home"
 @inject LocaleService Loc
+@inject AccountAuthService Auth
 @implements IDisposable
 @rendermode InteractiveServer
 
@@ -17,19 +18,31 @@
             <h2>@Loc.T("home.bot.title")</h2>
             <p>@Loc.T("home.bot.desc")</p>
         </a>
-        <a class="mode-card" href="/online">
-            <h2>@Loc.T("home.online.title")</h2>
-            <p>@Loc.T("home.online.desc")</p>
+        <a class="mode-card @(_hasPlus ? "" : "mode-card-locked")" href="/online">
+            <h2>@Loc.T("home.online.title") @if (!_hasPlus) { <span class="plus-pill">Plus</span> }</h2>
+            <p>@(_hasPlus ? Loc.T("home.online.desc") : Loc.T("home.online.locked"))</p>
         </a>
         <a class="mode-card" href="/decks">
             <h2>@Loc.T("home.decks.title")</h2>
             <p>@Loc.T("home.decks.desc")</p>
         </a>
+        <a class="mode-card" href="/rules">
+            <h2>@Loc.T("home.rules.title")</h2>
+            <p>@Loc.T("home.rules.desc")</p>
+        </a>
     </div>
 </section>
 
 @code {
-    protected override void OnInitialized() => Loc.Changed += OnChanged;
+    private bool _hasPlus;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Loc.Changed += OnChanged;
+        var acc = await Auth.GetCurrentAsync();
+        _hasPlus = acc?.HasPlus == true;
+    }
+
     private void OnChanged() => InvokeAsync(StateHasChanged);
     public void Dispose() => Loc.Changed -= OnChanged;
 }

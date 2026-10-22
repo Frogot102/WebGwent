@@ -21,6 +21,7 @@ public sealed class GameHub : Hub
 
     public async Task<RoomCreatedDto> CreateRoom(string faction, string playerName, string? deckId = null, string? accountId = null)
     {
+        RequirePlus(accountId);
         var deck = ResolveDeck(deckId, faction);
         Guid? acc = Guid.TryParse(accountId, out var g) ? g : null;
         var code = _sessions.CreateRoom(deck.Faction, Context.ConnectionId,
@@ -31,6 +32,7 @@ public sealed class GameHub : Hub
 
     public async Task<JoinedRoomDto> JoinRoom(string code, string faction, string playerName, string? deckId = null, string? accountId = null)
     {
+        RequirePlus(accountId);
         var deck = ResolveDeck(deckId, faction);
         Guid? acc = Guid.TryParse(accountId, out var g) ? g : null;
         var room = _sessions.JoinRoom(code.Trim().ToUpperInvariant(), deck.Faction, Context.ConnectionId,
@@ -40,6 +42,12 @@ public sealed class GameHub : Hub
         await Clients.Client(room.HostConnectionId!).SendAsync("MatchUpdated", BuildUpdate(room, 0));
         await Clients.Caller.SendAsync("MatchUpdated", BuildUpdate(room, 1));
         return new JoinedRoomDto(room.Code, 1, room.Match.MatchId);
+    }
+
+    private void RequirePlus(string? accountId)
+    {
+        if (!Guid.TryParse(accountId, out var id) || !_accounts.HasPlus(id))
+            throw new HubException("PlusRequired");
     }
 
     private Game.Engine.DeckList ResolveDeck(string? deckId, string factionFallback)
@@ -62,10 +70,15 @@ public sealed class GameHub : Hub
     public async Task Reconnect(string code, int playerIndex)
     {
         code = code.Trim().ToUpperInvariant();
+        var room = _sessions.GetRoom(code)
+                   ?? throw new HubException("Room not found.");
+        var accId = playerIndex == 0 ? room.HostAccountId : room.GuestAccountId;
+        if (accId is null || !_accounts.HasPlus(accId.Value))
+            throw new HubException("PlusRequired");
+
         _sessions.RebindConnection(code, playerIndex, Context.ConnectionId);
         await Groups.AddToGroupAsync(Context.ConnectionId, code);
-        var room = _sessions.GetRoom(code);
-        if (room?.GuestJoined == true)
+        if (room.GuestJoined)
             await Clients.Caller.SendAsync("MatchUpdated", BuildUpdate(room, playerIndex));
     }
 

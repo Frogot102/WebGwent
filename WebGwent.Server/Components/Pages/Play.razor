@@ -32,11 +32,23 @@
                 }
             </select>
         </label>
+        <label>@Loc.T("play.difficulty")
+            <select @bind="_difficulty">
+                <option value="@BotDifficulty.Easy">@Loc.T("play.diff.easy")</option>
+                <option value="@BotDifficulty.Medium">@Loc.T("play.diff.medium")</option>
+                <option value="@BotDifficulty.High">@Loc.T("play.diff.high")@(_hasPlus ? "" : $" · {Loc.T("plus.badge")}")</option>
+                <option value="@BotDifficulty.DeathMarch">@Loc.T("play.diff.death")@(_hasPlus ? "" : $" · {Loc.T("plus.badge")}")</option>
+            </select>
+        </label>
+        @if (!_hasPlus && BotDifficultyRules.RequiresPlus(_difficulty))
+        {
+            <p class="muted">@Loc.T("plus.needForDifficulty") <a href="/account/profile">@Loc.T("plus.goProfile")</a></p>
+        }
         @if (!string.IsNullOrEmpty(_error))
         {
             <div class="error-banner">@_error</div>
         }
-        <button class="btn primary" @onclick="Start">@Loc.T("play.start")</button>
+        <button class="btn primary" @onclick="Start" disabled="@(!_hasPlus && BotDifficultyRules.RequiresPlus(_difficulty))">@Loc.T("play.start")</button>
         <a class="link-back" href="/home">@Loc.T("play.back")</a>
         <a class="link-back" href="/decks/builder">@Loc.T("decks.openBuilder")</a>
     </div>
@@ -62,6 +74,7 @@ else
 
     private Guid _deck0Id;
     private Guid _deck1Id;
+    private BotDifficulty _difficulty = BotDifficulty.Medium;
     private Guid _matchId;
     private int _viewer;
     private MatchView? _view;
@@ -70,6 +83,7 @@ else
     private bool _matchEndSwept;
     private bool _matchRecorded;
     private PlayerAccount? _account;
+    private bool _hasPlus;
     private BoardProfile? _youProfile;
     private BoardProfile? _oppProfile;
     private CancellationTokenSource? _botCts;
@@ -86,6 +100,7 @@ else
 
         Loc.Changed += OnLang;
         _account = await Auth.GetCurrentAsync();
+        _hasPlus = _account?.HasPlus == true;
         var decks = AllDecks;
         var fav = _account?.FavoriteFaction ?? Faction.NorthernRealms;
         _deck0Id = decks.FirstOrDefault(d => d.Faction == fav)?.Id
@@ -117,11 +132,19 @@ else
             return;
         }
 
+        _hasPlus = _account?.HasPlus == true;
+        if (BotDifficultyRules.RequiresPlus(_difficulty) && !_hasPlus)
+        {
+            _error = Loc.T("plus.required");
+            return;
+        }
+
         var youName = _account?.DisplayName ?? Loc.T("play.you");
         var botName = Loc.T("play.botName");
         var match = Sessions.CreateLocal(GameMode.VsBot, d0.ToDeckList(), d1.ToDeckList(),
             youName,
-            botName);
+            botName,
+            _difficulty);
         _matchId = match.MatchId;
         _viewer = 0;
         _matchEndSwept = false;

@@ -4,6 +4,7 @@ public sealed class MatchState
 {
     public Guid MatchId { get; init; } = Guid.NewGuid();
     public GameMode Mode { get; set; } = GameMode.Hotseat;
+    public BotDifficulty BotDifficulty { get; set; } = BotDifficulty.High;
     public MatchPhase Phase { get; set; } = MatchPhase.Mulligan;
     public int RoundNumber { get; set; } = 1;
     public int ActivePlayer { get; set; }
@@ -46,6 +47,7 @@ public sealed class MatchState
         {
             MatchId = MatchId,
             Mode = Mode,
+            BotDifficulty = BotDifficulty,
             Phase = Phase,
             RoundNumber = RoundNumber,
             ActivePlayer = ActivePlayer,
