@@ -59,10 +59,6 @@ public sealed class CardCatalog
         if (!string.IsNullOrEmpty(d.LeaderAbility))
             leaderAbility = Enum.Parse<LeaderAbility>(d.LeaderAbility, ignoreCase: true);
 
-        var muster = d.MusterGroup;
-        if (d.Type == CardType.Leader && leaderAbility != LeaderAbility.None)
-            muster = $"Leader:{leaderAbility}";
-
         return new CardDefinition
         {
             Id = d.Id,
@@ -73,7 +69,7 @@ public sealed class CardCatalog
             Row = d.Row,
             Abilities = abilities,
             LeaderAbility = leaderAbility,
-            MusterGroup = muster,
+            MusterGroup = d.MusterGroup,
             Description = d.Description ?? ""
         };
     }

@@ -40,6 +40,7 @@ public sealed class MatchFactory
             StartingPlayer = start,
             ActivePlayer = start
         };
+        _engine.ApplyLeaderPassives(match);
         match.AddLog($"Mulligan phase. Each player may replace up to 2 cards.");
         return match;
     }

@@ -12,7 +12,7 @@
     <div class="board-topbar">
         <div>
             <strong>@Loc.T("board.round", View.RoundNumber)</strong>
-            <span class="gems">@Loc.T("board.you") @Gems(View.You.RoundWins) — @Loc.T("board.opp") @Gems(View.Opponent.RoundWins)</span>
+            <span class="gems" title="@Loc.T("board.lives")">@Loc.T("board.you") @Gems(View.You.Lives) — @Loc.T("board.opp") @Gems(View.Opponent.Lives)</span>
         </div>
         <div class="weather-bar">
             <span class="wx frost @(View.MeleeWeather != WeatherEffect.None ? "active" : "")">@Loc.T("board.frost")</span>
@@ -22,7 +22,7 @@
         <div class="status">
             @if (View.Phase == MatchPhase.MatchEnd)
             {
-                <span class="winner">@(View.Winner == View.ViewerIndex ? Loc.T("board.victory") : Loc.T("board.defeat"))</span>
+                <span class="winner">@MatchResultLabel</span>
             }
             else if (View.Phase == MatchPhase.Mulligan)
             {
@@ -89,7 +89,7 @@
                 {
                     <div class="meta-rating bot">BOT</div>
                 }
-                <div class="meta-gems" title="@Loc.T("board.opp")">@Gems(View.Opponent.RoundWins)</div>
+                <div class="meta-gems" title="@Loc.T("board.lives")">@Gems(View.Opponent.Lives)</div>
                 <div class="score-badge big" title="@Loc.T("board.power")">
                     <span class="score-value">@View.Opponent.TotalScore</span>
                 </div>
@@ -114,7 +114,7 @@
                 {
                     <div class="meta-rating" title="@Loc.T("auth.rating")">@youRating</div>
                 }
-                <div class="meta-gems" title="@Loc.T("board.you")">@Gems(View.You.RoundWins)</div>
+                <div class="meta-gems" title="@Loc.T("board.lives")">@Gems(View.You.Lives)</div>
                 <div class="score-badge big" title="@Loc.T("board.power")">
                     <span class="score-value">@View.You.TotalScore</span>
                 </div>
@@ -207,11 +207,14 @@
                 {
                     <p>@PendingLabel(View.Pending.Kind)</p>
                 }
-                @if (View.Pending.Kind == PendingKind.ChooseAgileRow)
+                @if (View.Pending.ValidRows.Count > 0)
                 {
                     <div class="pending-actions">
-                        <button class="btn" @onclick="() => Resolve(null, CombatRow.Melee)">@Loc.T("row.melee")</button>
-                        <button class="btn" @onclick="() => Resolve(null, CombatRow.Ranged)">@Loc.T("row.ranged")</button>
+                        @foreach (var row in View.Pending.ValidRows)
+                        {
+                            var picked = row;
+                            <button class="btn" @onclick="() => Resolve(null, picked)">@RowLabel(picked)</button>
+                        }
                     </div>
                 }
                 else if (View.Pending.Kind == PendingKind.ChooseWhoStarts)
@@ -221,17 +224,22 @@
                         <button class="btn" @onclick="() => ChooseStart(1 - View.ViewerIndex)">@Loc.T("board.oppStarts")</button>
                     </div>
                 }
-                else if (View.Pending.Kind == PendingKind.ChooseMedicTarget)
+                else if (View.Pending.Kind != PendingKind.ChooseDecoyTarget)
                 {
+                    var reveal = View.Pending.Kind == PendingKind.RevealOpponentCards;
                     <div class="card-row pending-targets">
-                        @foreach (var id in View.Pending.ValidTargets)
+                        @foreach (var option in View.PendingOptions)
                         {
-                            var card = FindTargetCard(id);
-                            if (card is null) { continue; }
-                            <GwentCard Card="card" OnSelected="c => Resolve(c.InstanceId, null)" />
+                            var card = option;
+                            <GwentCard Card="card"
+                                       Disabled="@reveal"
+                                       OnSelected="c => reveal ? Task.CompletedTask : Resolve(c.InstanceId, null)" />
                         }
                     </div>
-                    <button class="btn ghost" @onclick="() => Resolve(null, null)">@Loc.T("board.skip")</button>
+                    @if (View.Pending.CanSkip)
+                    {
+                        <button class="btn ghost" @onclick="() => Resolve(null, null)">@(reveal ? "OK" : Loc.T("board.skip"))</button>
+                    }
                 }
             </div>
         }
@@ -247,7 +255,7 @@
                 {
                     <button class="btn primary" disabled="@(!CanAct || _selected is null)" @onclick="PlaySelected">@Loc.T("board.play")</button>
                     <button class="btn" disabled="@(!CanAct)" @onclick="Pass">@Loc.T("board.pass")</button>
-                    <button class="btn ghost" disabled="@(!CanAct || View.You.LeaderUsed)" @onclick="UseLeader" title="@View.You.LeaderName">@Loc.T("board.leader")</button>
+                    <button class="btn ghost" disabled="@(!CanAct || View.You.LeaderUsed)" @onclick="UseLeader" title="@LeaderTitle">@Loc.T("board.leader")</button>
                 }
                 @if (_selected?.Abilities.Contains(Ability.Agile) == true)
                 {
@@ -305,8 +313,8 @@
     {
         <div class="match-overlay">
             <div class="match-modal wide">
-                <h2>@(View.Winner == View.ViewerIndex ? Loc.T("board.victory") : Loc.T("board.defeat"))</h2>
-                <p class="gems">@Loc.T("board.you") @Gems(View.You.RoundWins) — @Loc.T("board.opp") @Gems(View.Opponent.RoundWins)</p>
+                <h2>@MatchResultLabel</h2>
+                <p class="gems">@Loc.T("board.you") @Gems(View.You.Lives) — @Loc.T("board.opp") @Gems(View.Opponent.Lives)</p>
                 @if (View.RoundHistory.Count > 0)
                 {
                     <div class="round-history">
@@ -522,16 +530,27 @@
     private Task Resolve(Guid? target, CombatRow? row) => OnResolvePending.InvokeAsync((target, row));
     private Task ChooseStart(int who) => OnChooseStart.InvokeAsync(who);
 
-    private CardView? FindTargetCard(Guid id)
-    {
-        if (View is null) return null;
-        return View.You.Discard.FirstOrDefault(c => c.InstanceId == id)
-               ?? View.You.Melee.FirstOrDefault(c => c.InstanceId == id)
-               ?? View.You.Ranged.FirstOrDefault(c => c.InstanceId == id)
-               ?? View.You.Siege.FirstOrDefault(c => c.InstanceId == id);
-    }
+    /// <summary>Filled gems = crystals (lives) left.</summary>
+    private static string Gems(int lives) => string.Concat(Enumerable.Range(0, 2).Select(i => i < lives ? "◆" : "◇"));
 
-    private static string Gems(int wins) => string.Concat(Enumerable.Range(0, 2).Select(i => i < wins ? "◆" : "◇"));
+    private string MatchResultLabel =>
+        View!.IsDraw ? Loc.T("board.matchDraw")
+        : View.Winner == View.ViewerIndex ? Loc.T("board.victory")
+        : Loc.T("board.defeat");
+
+    private string LeaderTitle
+    {
+        get
+        {
+            var you = View!.You;
+            var name = you.LeaderName is null ? "" : Loc.CardName(you.LeaderName);
+            var desc = Loc.CardDescription(you.LeaderDescription, []);
+            var state = you.LeaderCancelled ? Loc.T("board.leaderCancelled")
+                : you.LeaderPassive ? Loc.T("board.leaderPassive")
+                : "";
+            return string.Join(" — ", new[] { name, desc, state }.Where(s => !string.IsNullOrEmpty(s)));
+        }
+    }
 
     private string PendingLabel(PendingKind kind) => kind switch
     {
@@ -539,6 +558,14 @@
         PendingKind.ChooseMedicTarget => Loc.T("board.pending.medic"),
         PendingKind.ChooseDecoyTarget => Loc.T("board.pending.decoy"),
         PendingKind.ChooseWhoStarts => Loc.T("board.pending.start"),
+        PendingKind.ChooseHornRow => Loc.T("board.pending.horn"),
+        PendingKind.ChooseMardroemeRow => Loc.T("board.pending.mardroeme"),
+        PendingKind.ChooseOwnDiscardCard => Loc.T("board.pending.ownDiscard"),
+        PendingKind.ChooseEnemyDiscardCard => Loc.T("board.pending.enemyDiscard"),
+        PendingKind.ChooseHandDiscard => Loc.T("board.pending.handDiscard", View?.Pending?.Remaining ?? 1),
+        PendingKind.ChooseDeckCard => Loc.T("board.pending.deckCard"),
+        PendingKind.ChooseDeckWeather => Loc.T("board.pending.deckWeather"),
+        PendingKind.RevealOpponentCards => Loc.T("board.pending.reveal"),
         _ => Loc.T("board.pending.choose")
     };
 

@@ -4,38 +4,54 @@ namespace WebGwent.Game.Engine;
 
 public static class ScoreCalculator
 {
+    /// <summary>
+    /// TW3 order: weather → Tight Bond → Morale Boost → Commander's Horn. Heroes ignore all of it.
+    /// </summary>
     public static int GetCardStrength(CardInstance card, PlayerState owner, MatchState match)
     {
         if (card.Type != CardType.Unit)
             return 0;
+        if (card.IsHero)
+            return card.BaseStrength;
 
         var row = card.PlacedRow;
-        var weather = GetWeather(match, row);
+        if (!owner.Rows.TryGetValue(row, out var rowCards))
+            return card.BaseStrength;
+
         var strength = card.BaseStrength;
-
-        if (!card.IsHero && weather != WeatherEffect.None)
-            strength = 1;
-
-        if (!card.IsHero)
+        if (GetWeather(match, row) != WeatherEffect.None)
         {
-            var bondCount = owner.Rows[row].Count(c =>
-                c.Name == card.Name && c.Abilities.Contains(Ability.TightBond));
-            if (card.Abilities.Contains(Ability.TightBond) && bondCount > 1)
+            // King Bran: units only lose half their strength in bad weather.
+            strength = owner.ActiveLeaderAbility == LeaderAbility.KingBran
+                ? (strength + 1) / 2
+                : Math.Min(strength, 1);
+        }
+
+        if (card.Abilities.Contains(Ability.TightBond))
+        {
+            var bondCount = rowCards.Count(c => c.Name == card.Name && c.Abilities.Contains(Ability.TightBond));
+            if (bondCount > 1)
                 strength *= bondCount;
         }
 
-        if (!card.IsHero)
-        {
-            var morale = owner.Rows[row].Count(c =>
-                c.InstanceId != card.InstanceId && c.Abilities.Contains(Ability.MoraleBoost));
-            strength += morale;
-        }
+        strength += rowCards.Count(c =>
+            c.InstanceId != card.InstanceId && c.Type == CardType.Unit && c.Abilities.Contains(Ability.MoraleBoost));
 
-        if (!card.IsHero && owner.HornRows.Contains(row))
+        if (HasHorn(owner, row, exceptCard: card))
             strength *= 2;
 
         return Math.Max(0, strength);
     }
+
+    /// <summary>
+    /// A row is horned by the Commander's Horn special/leader or by a horn unit (Dandelion) other than the card itself.
+    /// </summary>
+    public static bool HasHorn(PlayerState owner, CombatRow row, CardInstance? exceptCard = null) =>
+        owner.HornRows.Contains(row)
+        || (owner.Rows.TryGetValue(row, out var cards)
+            && cards.Any(c => c.Type == CardType.Unit
+                              && c.Abilities.Contains(Ability.CommandersHorn)
+                              && c.InstanceId != exceptCard?.InstanceId));
 
     public static int GetRowScore(PlayerState player, CombatRow row, MatchState match)
     {
