@@ -184,14 +184,25 @@ public sealed class PlayerView
             MeleeScore = ScoreCalculator.GetRowScore(p, CombatRow.Melee, match),
             RangedScore = ScoreCalculator.GetRowScore(p, CombatRow.Ranged, match),
             SiegeScore = ScoreCalculator.GetRowScore(p, CombatRow.Siege, match),
-            Hand = hideHand ? [] : p.Hand.Select(c => CardView.From(c, p, match)).ToList(),
-            Melee = p.Rows[CombatRow.Melee].Select(c => CardView.From(c, p, match)).ToList(),
-            Ranged = p.Rows[CombatRow.Ranged].Select(c => CardView.From(c, p, match)).ToList(),
-            Siege = p.Rows[CombatRow.Siege].Select(c => CardView.From(c, p, match)).ToList(),
+            Hand = hideHand ? [] : SortByPower(p.Hand.Select(c => CardView.From(c, p, match)), c => c.BaseStrength),
+            Melee = SortByPower(p.Rows[CombatRow.Melee].Select(c => CardView.From(c, p, match)), c => c.CurrentStrength),
+            Ranged = SortByPower(p.Rows[CombatRow.Ranged].Select(c => CardView.From(c, p, match)), c => c.CurrentStrength),
+            Siege = SortByPower(p.Rows[CombatRow.Siege].Select(c => CardView.From(c, p, match)), c => c.CurrentStrength),
             Discard = p.Discard.Select(c => CardView.From(c, p, match)).ToList(),
             HornRows = RulesEngine.BoardRows.Where(r => ScoreCalculator.HasHorn(p, r)).ToHashSet()
         };
     }
+
+    /// <summary>
+    /// Display order like TW3: special cards first, then units from weakest to strongest
+    /// (hand by printed strength, rows by current strength); same-strength cards stay grouped by name.
+    /// </summary>
+    private static List<CardView> SortByPower(IEnumerable<CardView> cards, Func<CardView, int> power) =>
+        cards.OrderBy(c => c.Type == CardType.Unit ? 1 : 0)
+            .ThenBy(power)
+            .ThenBy(c => c.Name, StringComparer.Ordinal)
+            .ThenBy(c => c.InstanceId)
+            .ToList();
 }
 
 public sealed class CardView
