@@ -30,7 +30,7 @@ public sealed class GameSessionManager
     private readonly DeckLibrary _decks;
     private readonly MatchFactory _factory;
     private readonly RulesEngine _engine;
-    private readonly BotAI _bot;
+    private readonly ConcurrentDictionary<BotDifficulty, BotAI> _bots = new();
     private readonly object _lock = new();
 
     public GameSessionManager()
@@ -39,17 +39,19 @@ public sealed class GameSessionManager
         _decks = new DeckLibrary(_catalog);
         _engine = new RulesEngine();
         _factory = new MatchFactory(_catalog, _engine);
-        _bot = new BotAI(_engine);
     }
+
+    private BotAI BotFor(BotDifficulty difficulty) =>
+        _bots.GetOrAdd(difficulty, d => new BotAI(_engine, difficulty: d));
 
     public CardCatalog Catalog => _catalog;
     public DeckLibrary Decks => _decks;
     public RulesEngine Engine => _engine;
 
-    public MatchState CreateLocal(GameMode mode, Faction faction0, Faction faction1, string name0 = "Player 1", string name1 = "Player 2") =>
-        CreateLocal(mode, PresetDecks.ForFaction(faction0), PresetDecks.ForFaction(faction1), name0, name1);
+    public MatchState CreateLocal(GameMode mode, Faction faction0, Faction faction1, string name0 = "Player 1", string name1 = "Player 2", BotDifficulty botDifficulty = BotDifficulty.High) =>
+        CreateLocal(mode, PresetDecks.ForFaction(faction0), PresetDecks.ForFaction(faction1), name0, name1, botDifficulty);
 
-    public MatchState CreateLocal(GameMode mode, DeckList deck0, DeckList deck1, string name0 = "Player 1", string name1 = "Player 2")
+    public MatchState CreateLocal(GameMode mode, DeckList deck0, DeckList deck1, string name0 = "Player 1", string name1 = "Player 2", BotDifficulty botDifficulty = BotDifficulty.High)
     {
         var match = _factory.Create(
             deck0,
@@ -58,6 +60,7 @@ public sealed class GameSessionManager
             name0,
             mode == GameMode.VsBot ? "Bot" : name1,
             player1IsBot: mode == GameMode.VsBot);
+        match.BotDifficulty = botDifficulty;
 
         _local[match.MatchId] = match;
 
@@ -245,7 +248,7 @@ public sealed class GameSessionManager
         {
             var p = match.Players[match.Pending.PlayerIndex];
             if (!p.IsBot) return false;
-            _bot.TakeTurn(match, p.Index);
+            BotFor(match.BotDifficulty).TakeTurn(match, p.Index);
             return true;
         }
 
@@ -254,7 +257,7 @@ public sealed class GameSessionManager
             var bot = match.Players.FirstOrDefault(p => p.IsBot && p.MulliganLeft > 0);
             if (bot is not null)
             {
-                _bot.TakeTurn(match, bot.Index);
+                BotFor(match.BotDifficulty).TakeTurn(match, bot.Index);
                 return true;
             }
 
@@ -283,7 +286,7 @@ public sealed class GameSessionManager
         if (!current.IsBot || current.HasPassed)
             return false;
 
-        _bot.TakeTurn(match, current.Index);
+        BotFor(match.BotDifficulty).TakeTurn(match, current.Index);
         return true;
     }
 

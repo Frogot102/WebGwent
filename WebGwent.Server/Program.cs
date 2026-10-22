@@ -33,6 +33,7 @@ builder.Services.AddAuthorization(options =>
 
 builder.Services.AddSingleton<GameSessionManager>();
 builder.Services.AddSingleton<AccountStore>();
+builder.Services.AddSingleton<InviteStore>();
 builder.Services.AddScoped<IdentityRevalidatingAuthStateProvider>();
 builder.Services.AddScoped<AuthenticationStateProvider>(sp =>
     sp.GetRequiredService<IdentityRevalidatingAuthStateProvider>());
@@ -41,6 +42,10 @@ builder.Services.AddScoped<LocaleService>();
 builder.Services.AddSignalR();
 
 var app = builder.Build();
+
+// Ensure seed admin exists (AccountStore ctor already does this; touch singleton early).
+_ = app.Services.GetRequiredService<AccountStore>();
+_ = app.Services.GetRequiredService<InviteStore>();
 
 if (!app.Environment.IsDevelopment())
 {

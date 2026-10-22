@@ -1,0 +1,139 @@
+@page "/rules"
+@rendermode InteractiveServer
+@inject LocaleService Loc
+@implements IDisposable
+
+<PageTitle>WebGwent — @Loc.T("rules.title")</PageTitle>
+
+<section class="rules-page">
+    <header class="rules-header">
+        <h1>@Loc.T("rules.title")</h1>
+        <p class="lede">@Loc.T("rules.lede")</p>
+        <div class="rules-toolbar">
+            <input class="rules-search" @bind="_query" @bind:event="oninput" placeholder="@Loc.T("rules.search")" />
+            <label class="rules-sort">
+                @Loc.T("rules.sort")
+                <select value="@(_sortAlpha ? "alpha" : "default")" @onchange="OnSortChanged">
+                    <option value="default">@Loc.T("rules.sortDefault")</option>
+                    <option value="alpha">@Loc.T("rules.sortAlpha")</option>
+                </select>
+            </label>
+            <button type="button" class="btn ghost" @onclick="ExpandAll">@Loc.T("rules.expand")</button>
+            <button type="button" class="btn ghost" @onclick="CollapseAll">@Loc.T("rules.collapse")</button>
+        </div>
+    </header>
+
+    <div class="rules-layout">
+        <nav class="rules-toc" aria-label="TOC">
+            <strong>@Loc.T("rules.toc")</strong>
+            <ul>
+                @foreach (var ch in VisibleChapters)
+                {
+                    <li><a href="@($"#rule-{ch.Id}")" @onclick="() => Open(ch.Id)" @onclick:preventDefault>@ch.Title</a></li>
+                }
+            </ul>
+        </nav>
+
+        <div class="rules-chapters">
+            @foreach (var ch in VisibleChapters)
+            {
+                var open = _open.Contains(ch.Id);
+                <article id="@($"rule-{ch.Id}")" class="rules-chapter @(open ? "is-open" : "")">
+                    <button type="button" class="rules-chapter-head" @onclick="() => Toggle(ch.Id)">
+                        <span>@ch.Title</span>
+                        <span class="chev">@(open ? "−" : "+")</span>
+                    </button>
+                    @if (open)
+                    {
+                        <div class="rules-chapter-body">
+                            @((MarkupString)Highlight(ch.Body))
+                        </div>
+                    }
+                </article>
+            }
+            @if (!VisibleChapters.Any())
+            {
+                <p class="muted">@Loc.T("rules.noResults")</p>
+            }
+        </div>
+    </div>
+</section>
+
+@code {
+    private string _query = "";
+    private bool _sortAlpha;
+    private readonly HashSet<string> _open = new(StringComparer.Ordinal);
+
+    private sealed record ChapterDef(string Id, string TitleKey, string BodyKey);
+    private sealed record Chapter(string Id, string Title, string Body);
+
+    private static readonly ChapterDef[] Catalog =
+    [
+        new("goal", "rules.ch.goal.title", "rules.ch.goal.body"),
+        new("rounds", "rules.ch.rounds.title", "rules.ch.rounds.body"),
+        new("mulligan", "rules.ch.mulligan.title", "rules.ch.mulligan.body"),
+        new("rows", "rules.ch.rows.title", "rules.ch.rows.body"),
+        new("weather", "rules.ch.weather.title", "rules.ch.weather.body"),
+        new("abilities", "rules.ch.abilities.title", "rules.ch.abilities.body"),
+        new("leaders", "rules.ch.leaders.title", "rules.ch.leaders.body"),
+        new("factions", "rules.ch.factions.title", "rules.ch.factions.body"),
+        new("deck", "rules.ch.deck.title", "rules.ch.deck.body"),
+        new("plus", "rules.ch.plus.title", "rules.ch.plus.body"),
+    ];
+
+    private IEnumerable<Chapter> VisibleChapters
+    {
+        get
+        {
+            var q = _query.Trim();
+            IEnumerable<Chapter> list = Catalog.Select(c =>
+                new Chapter(c.Id, Loc.T(c.TitleKey), Loc.T(c.BodyKey)));
+            if (!string.IsNullOrEmpty(q))
+            {
+                list = list.Where(c =>
+                    c.Title.Contains(q, StringComparison.OrdinalIgnoreCase)
+                    || c.Body.Contains(q, StringComparison.OrdinalIgnoreCase));
+            }
+            return _sortAlpha
+                ? list.OrderBy(c => c.Title, StringComparer.CurrentCultureIgnoreCase)
+                : list;
+        }
+    }
+
+    private void OnSortChanged(ChangeEventArgs e) =>
+        _sortAlpha = string.Equals(e.Value?.ToString(), "alpha", StringComparison.OrdinalIgnoreCase);
+
+    protected override void OnInitialized()
+    {
+        Loc.Changed += OnChanged;
+        foreach (var c in Catalog)
+            _open.Add(c.Id);
+    }
+
+    private void OnChanged() => InvokeAsync(StateHasChanged);
+    public void Dispose() => Loc.Changed -= OnChanged;
+
+    private void Toggle(string id)
+    {
+        if (!_open.Add(id))
+            _open.Remove(id);
+    }
+
+    private void Open(string id) => _open.Add(id);
+    private void ExpandAll() { foreach (var c in Catalog) _open.Add(c.Id); }
+    private void CollapseAll() => _open.Clear();
+
+    private string Highlight(string body)
+    {
+        var html = System.Net.WebUtility.HtmlEncode(body).Replace("\n", "<br/>");
+        var q = _query.Trim();
+        if (string.IsNullOrEmpty(q))
+            return html;
+        var enc = System.Net.WebUtility.HtmlEncode(q);
+        return System.Text.RegularExpressions.Regex.Replace(
+            html,
+            System.Text.RegularExpressions.Regex.Escape(enc),
+            m => $"<mark>{m.Value}</mark>",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+    }
+}
