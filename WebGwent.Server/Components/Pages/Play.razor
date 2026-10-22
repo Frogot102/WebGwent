@@ -218,6 +218,18 @@ else
         }
     }
 
+    /// <summary>Pause before the bot's first move after the player acts: longer than the card fly + pop animation.</summary>
+    private const int BotResponseDelayMs = 1200;
+
+    private bool BotActsNext()
+    {
+        var match = Sessions.GetLocal(_matchId);
+        if (match is null || match.Phase != MatchPhase.Playing)
+            return false;
+        var actor = match.Pending?.PlayerIndex ?? match.ActivePlayer;
+        return match.Players[actor].IsBot && !match.Players[actor].HasPassed;
+    }
+
     private async Task AnimateBotAsync()
     {
         _botCts?.Cancel();
@@ -230,6 +242,7 @@ else
         try
         {
             var steps = 0;
+            var pauseBeforeBot = true;
             while (steps++ < 40)
             {
                 if (ct.IsCancellationRequested) break;
@@ -237,6 +250,7 @@ else
                 if (_view?.Phase == MatchPhase.RoundEnd)
                 {
                     await ResolveBoardClearAsync(ct);
+                    pauseBeforeBot = true;
                     continue;
                 }
 
@@ -245,6 +259,11 @@ else
                     await ResolveBoardClearAsync(ct);
                     break;
                 }
+
+                // Let the player's card land (and the new round settle) before the bot answers.
+                if (pauseBeforeBot && BotActsNext())
+                    await Task.Delay(BotResponseDelayMs, ct);
+                pauseBeforeBot = false;
 
                 if (!Sessions.StepBotLocal(_matchId))
                     break;

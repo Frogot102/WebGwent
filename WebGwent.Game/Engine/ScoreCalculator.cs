@@ -27,6 +27,10 @@ public static class ScoreCalculator
                 : Math.Min(strength, 1);
         }
 
+        // Eredin Bréacc Glas: The Treacherous doubles every spy, on both sides.
+        if (card.Abilities.Contains(Ability.Spy) && LeaderAbilities.IsActiveAnywhere(match, LeaderAbility.EredinTreacherous))
+            strength *= 2;
+
         if (card.Abilities.Contains(Ability.TightBond))
         {
             var bondCount = rowCards.Count(c => c.Name == card.Name && c.Abilities.Contains(Ability.TightBond));

@@ -270,7 +270,8 @@
             <div class="card-row hand">
                 @foreach (var card in View.You.Hand)
                 {
-                    <GwentCard Card="card"
+                    <GwentCard @key="card.InstanceId"
+                               Card="card"
                                Selected="@(_selected?.InstanceId == card.InstanceId)"
                                Disabled="@InputLocked"
                                OnSelected="SelectCard" />
@@ -582,6 +583,7 @@
         WeatherEffect.Frost => Loc.T("board.frost"),
         WeatherEffect.Fog => Loc.T("board.fog"),
         WeatherEffect.Rain => Loc.T("board.rain"),
+        WeatherEffect.Storm => Loc.T("board.storm"),
         _ => ""
     };
 
@@ -610,7 +612,7 @@
         {
             WeatherEffect.Frost => "wx-frost",
             WeatherEffect.Fog => "wx-fog",
-            WeatherEffect.Rain => "wx-rain",
+            WeatherEffect.Rain or WeatherEffect.Storm => "wx-rain",
             _ => ""
         };
         var justHit = View!.LastPlayedRow == row && View.LastPlayedCardId is not null;
@@ -634,7 +636,8 @@
                 {
                     var boardCard = c;
                     var canPick = decoyOnThisSide && View!.Pending!.ValidTargets.Contains(boardCard.InstanceId);
-                    <GwentCard Card="boardCard"
+                    <GwentCard @key="boardCard.InstanceId"
+                               Card="boardCard"
                                Disabled="false"
                                Targetable="@canPick"
                                Dimmed="@(decoyOnThisSide && !canPick)"

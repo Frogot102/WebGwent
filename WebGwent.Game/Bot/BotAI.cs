@@ -544,7 +544,7 @@ public sealed class BotAI
             v += v * 0.5;
         if (c.Abilities.Contains(Ability.MoraleBoost)) v += 2;
         if (c.Abilities.Contains(Ability.CommandersHorn)) v += 4;
-        if (c.Abilities.Contains(Ability.Scorch)) v += 3;
+        if (c.Abilities.Contains(Ability.Scorch) || c.Abilities.Contains(Ability.ScorchBattlefield)) v += 3;
         if (c.Abilities.Contains(Ability.Berserker)) v += 2;
         if (c.IsHero) v += 4; // immune to weather and Scorch — best saved for the decider
         return 0.3 * avg + v;
