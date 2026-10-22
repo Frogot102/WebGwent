@@ -79,8 +79,8 @@ public static class CardLocalizer
         ["Fringilla Vigo"] = "Фрингилла Виго",
         ["Cynthia"] = "Цинтия",
         ["Renuald aep Matsen"] = "Ренуальд аэп Матсен",
-        ["Rot Tosser"] = "Метатель гнили",
-        ["Nausicaa Cavalry Brigade"] = "Кавалерийская бригада Навсикаи",
+        ["Rotten Mangonel"] = "Гнилая мангонель",
+        ["Nausicaa Cavalry Rider"] = "Всадник из кавалерии Навсикаи",
         ["Impera Brigade Guard"] = "Гвардия бригады Импера",
         ["Black Infantry Archer"] = "Лучник чёрной пехоты",
         ["Siege Engineer"] = "Осадный инженер",
@@ -114,7 +114,7 @@ public static class CardLocalizer
         ["Elven Skirmisher"] = "Эльфийский застрельщик",
         ["Vrihedd Brigade Veteran"] = "Ветеран бригады Врихедд",
         ["Vrihedd Brigade Recruit"] = "Рекрут бригады Врихедд",
-        ["Ciaran aep Easnillen"] = "Киаран аэп Эаснилен",
+        ["Ciaran aep Easnillien"] = "Киаран аэп Эаснилен",
         ["Barclay Els"] = "Баркли Элс",
         ["Dol Blathanna Archer"] = "Лучник Доль Блатанны",
         ["Dol Blathanna Scout"] = "Разведчик Доль Блатанны",
@@ -175,12 +175,33 @@ public static class CardLocalizer
         ["Young Vildkaarl"] = "Юный вильдкаарл",
         ["Clan Dimun Pirate"] = "Пират клана Димун",
         ["Clan an Craite Warrior"] = "Воин клана ан Крайт",
-        ["Clan Brokvar Archer"] = "Лучник клана Броквар",
+        ["Clan Brokva Archer"] = "Лучник клана Брокви",
         ["Kambi"] = "Камби",
         ["Hemdall"] = "Хемдалль",
         ["Coral"] = "Коралл",
         ["Holger Blackhand"] = "Хольгер Чёрная Рука",
         ["Clan Heymaey Skald"] = "Скальд клана Хеймай",
+
+        // Hearts of Stone / Blood and Wine and missing base cards
+        ["Skellige Storm"] = "Шторм Скеллиге",
+        ["Dethmold"] = "Детмольд",
+        ["Sigismund Dijkstra"] = "Сигизмунд Дийкстра",
+        ["Morteisen"] = "Мортейзен",
+        ["Vreemde"] = "Вреемде",
+        ["Siege Technician"] = "Осадный техник",
+        ["Zerrikanian Fire Scorpion"] = "Зерриканский огненный скорпион",
+        ["Emhyr var Emreis: Invader of the North"] = "Эмгыр вар Эмрейс: Захватчик Севера",
+        ["Saesenthessis"] = "Саэсентессис",
+        ["Endrega"] = "Эндриага",
+        ["Cockatrice"] = "Кокатрикс",
+        ["Gargoyle"] = "Гаргулья",
+        ["Grave Hag"] = "Кладбищенская баба",
+        ["Ice Giant"] = "Ледяной великан",
+        ["Fire Elemental"] = "Огненный элементаль",
+        ["Toad"] = "Жаба",
+        ["Eredin Bréacc Glas: The Treacherous"] = "Эредин Бреакк Глас: Предатель",
+        ["Clan Tordarroch Armorsmith"] = "Бронник клана Тордаррох",
+        ["Draig Bon-Dhu"] = "Драйг Бон-Дху",
     };
 
     private static readonly Dictionary<Ability, (string En, string Ru)> Abilities = new()
@@ -203,6 +224,8 @@ public static class CardLocalizer
         [Ability.Berserker] = ("Berserker", "Берсерк"),
         [Ability.Mardroeme] = ("Mardroeme", "Мардроеме"),
         [Ability.SummonAvenger] = ("Avenger", "Мститель"),
+        [Ability.WeatherStorm] = ("Skellige Storm", "Шторм Скеллиге"),
+        [Ability.ScorchBattlefield] = ("Scorch", "Испепеление"),
     };
 
     private static readonly Dictionary<Ability, (string En, string Ru)> AbilityDescriptions = new()
@@ -258,12 +281,26 @@ public static class CardLocalizer
         [Ability.SummonAvenger] = (
             "When this card is removed from the battlefield, summon a replacement.",
             "Когда карта покидает поле, призывает замену."),
+        [Ability.WeatherStorm] = (
+            "Sets the strength of all Ranged Combat and Siege units to 1.",
+            "Сила всех юнитов дальнего и осадного рядов становится 1."),
+        [Ability.ScorchBattlefield] = (
+            "Destroys the strongest non-Hero unit(s) on the battlefield when played.",
+            "При розыгрыше уничтожает сильнейшего не-героя (или нескольких) на поле."),
     };
 
     private static readonly Dictionary<string, string> DescriptionsRu = new(StringComparer.OrdinalIgnoreCase)
     {
         ["Return a non-Hero unit to hand; Decoy takes its place."] =
             "Верните не-героя в руку; Чучело занимает его место.",
+        ["Destroy the enemy's strongest Ranged unit(s) if their Ranged row totals 10 or more."] =
+            "Уничтожает сильнейших юнитов дальнего боя врага, если сила его дальнего ряда ≥ 10.",
+        ["Scorch: destroys the strongest non-Hero unit(s) on the battlefield."] =
+            "Испепеление: уничтожает сильнейшего не-героя (или нескольких) на поле.",
+        ["Passive: abilities that restore a unit to the battlefield restore a randomly-chosen unit. Affects both players."] =
+            "Пассивно: способности, возвращающие отряд на поле, возвращают случайный отряд. Действует на обоих игроков.",
+        ["Passive: doubles the strength of all spy cards. Affects both players."] =
+            "Пассивно: удваивает силу всех шпионов. Действует на обоих игроков.",
         ["Double the strength of all non-Hero units in a row."] =
             "Удваивает силу всех не-героев в ряду.",
         ["Destroy the strongest non-Hero unit(s) on the board."] =
