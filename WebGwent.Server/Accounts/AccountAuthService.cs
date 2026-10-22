@@ -42,6 +42,7 @@ public sealed class AccountAuthService
         {
             new(ClaimTypes.NameIdentifier, account.Id.ToString()),
             new(ClaimTypes.Name, account.Username),
+            new(ClaimTypes.Role, account.Role.ToString()),
             new(DisplayNameClaim, account.DisplayName),
             new(AvatarClaim, account.AvatarId)
         };

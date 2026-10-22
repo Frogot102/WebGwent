@@ -20,19 +20,31 @@ public sealed class BotAI
 {
     private const int MaxPendingDepth = 3;
 
-    // Look-ahead budget: ~30 ms per decision. More worlds/candidates barely change the results.
-    private const int LookAheadWorlds = 32;
-    private const int LookAheadCandidates = 10;
-    /// <summary>How much better (in won play-outs) another move must be to overrule the strategy.</summary>
-    private const double LookAheadMargin = 0.5;
-
     private readonly RulesEngine _engine;
     private readonly Random _rng;
+    private readonly BotDifficulty _difficulty;
+    private readonly int _lookAheadWorlds;
+    private readonly int _lookAheadCandidates;
+    private readonly double _lookAheadMargin;
+    private readonly bool _skipLookAhead;
+    /// <summary>Chance to pick a weaker move instead of the strategy's choice (Easy / Medium).</summary>
+    private readonly double _mistakeChance;
 
-    public BotAI(RulesEngine engine, Random? rng = null)
+    public BotDifficulty Difficulty => _difficulty;
+
+    public BotAI(RulesEngine engine, Random? rng = null, BotDifficulty difficulty = BotDifficulty.High)
     {
         _engine = engine;
         _rng = rng ?? Random.Shared;
+        _difficulty = difficulty;
+        (_lookAheadWorlds, _lookAheadCandidates, _lookAheadMargin, _skipLookAhead, _mistakeChance) =
+            difficulty switch
+            {
+                BotDifficulty.Easy => (0, 0, 0.5, true, 0.65),
+                BotDifficulty.Medium => (8, 4, 0.5, false, 0.35),
+                BotDifficulty.DeathMarch => (64, 14, 0.25, false, 0),
+                _ => (32, 10, 0.5, false, 0) // High — current full AI
+            };
     }
 
     public void TakeTurn(MatchState match, int botIndex)
@@ -59,8 +71,21 @@ public sealed class BotAI
         var ctx = new TurnContext(match, botIndex);
         var outcomes = EvaluateMoves(match, botIndex, ctx);
         var move = ChooseMove(match, botIndex, ctx, outcomes);
-        move = LookAhead(match, botIndex, ctx, outcomes, move);
+        if (!_skipLookAhead)
+            move = LookAhead(match, botIndex, ctx, outcomes, move);
+        move = MaybeBlunder(outcomes, move);
         Execute(match, botIndex, ctx, move, outcomes);
+    }
+
+    private Move MaybeBlunder(List<Outcome> outcomes, Move proposed)
+    {
+        if (_mistakeChance <= 0 || outcomes.Count == 0 || _rng.NextDouble() >= _mistakeChance)
+            return proposed;
+
+        // Prefer a move from the weaker half of the scored list (Easy / Medium).
+        var ordered = outcomes.OrderBy(o => o.Score).ToList();
+        var weakCount = Math.Max(1, ordered.Count / 2);
+        return ordered[_rng.Next(weakCount)].Move;
     }
 
     // ───────────────────────────── look-ahead ─────────────────────────────
@@ -79,7 +104,7 @@ public sealed class BotAI
         var candidates = outcomes
             .OrderByDescending(o => o.Score)
             .Select(o => o.Move)
-            .Take(LookAheadCandidates)
+            .Take(_lookAheadCandidates)
             .Append(proposed)
             .Append(Move.Pass)
             .Distinct()
@@ -88,7 +113,7 @@ public sealed class BotAI
             return proposed;
 
         var totals = new double[candidates.Count];
-        for (var w = 0; w < LookAheadWorlds; w++)
+        for (var w = 0; w < _lookAheadWorlds; w++)
         {
             var world = Determinize(match, me);
             var seed = _rng.Next();
@@ -114,7 +139,7 @@ public sealed class BotAI
         var bestIndex = candidates.IndexOf(proposed);
         for (var i = 0; i < candidates.Count; i++)
         {
-            if (totals[i] > totals[bestIndex] + LookAheadMargin)
+            if (totals[i] > totals[bestIndex] + _lookAheadMargin)
                 bestIndex = i;
         }
 

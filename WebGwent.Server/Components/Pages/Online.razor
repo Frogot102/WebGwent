@@ -14,33 +14,46 @@
 {
     <div class="setup-panel wide">
         <h1>@Loc.T("online.title")</h1>
-        <label>@Loc.T("online.name") <input @bind="_name" maxlength="24" /></label>
-        <label>@Loc.T("play.yourDeck")
-            <select @bind="_deckId">
-                @foreach (var d in Sessions.Decks.GetAll())
-                {
-                    <option value="@d.Id">@((d.IsPreset ? "★ " : "") + d.Name + " (" + Loc.FactionName(d.Faction) + ")")</option>
-                }
-            </select>
-        </label>
 
-        <div class="online-actions">
-            <button class="btn primary" disabled="@(_busy)" @onclick="CreateRoom">@Loc.T("online.create")</button>
-            <div class="join-row">
-                <input @bind="_joinCode" placeholder="@Loc.T("online.codePlaceholder")" maxlength="5" />
-                <button class="btn" disabled="@(_busy)" @onclick="JoinRoom">@Loc.T("online.join")</button>
+        @if (!_hasPlus)
+        {
+            <div class="plus-lock">
+                <p class="plus-lock-title">🔒 @Loc.T("plus.lockOnline")</p>
+                <p class="muted">@Loc.T("plus.lockOnlineDesc")</p>
+                <a class="btn primary" href="/account/profile">@Loc.T("plus.goProfile")</a>
+                <a class="link-back" href="/home">@Loc.T("online.back")</a>
             </div>
-        </div>
+        }
+        else
+        {
+            <label>@Loc.T("online.name") <input @bind="_name" maxlength="24" /></label>
+            <label>@Loc.T("play.yourDeck")
+                <select @bind="_deckId">
+                    @foreach (var d in Sessions.Decks.GetAll())
+                    {
+                        <option value="@d.Id">@((d.IsPreset ? "★ " : "") + d.Name + " (" + Loc.FactionName(d.Faction) + ")")</option>
+                    }
+                </select>
+            </label>
 
-        @if (!string.IsNullOrEmpty(_code))
-        {
-            <p class="room-code">@Loc.T("online.waiting", _code)</p>
+            <div class="online-actions">
+                <button class="btn primary" disabled="@(_busy)" @onclick="CreateRoom">@Loc.T("online.create")</button>
+                <div class="join-row">
+                    <input @bind="_joinCode" placeholder="@Loc.T("online.codePlaceholder")" maxlength="5" />
+                    <button class="btn" disabled="@(_busy)" @onclick="JoinRoom">@Loc.T("online.join")</button>
+                </div>
+            </div>
+
+            @if (!string.IsNullOrEmpty(_code))
+            {
+                <p class="room-code">@Loc.T("online.waiting", _code)</p>
+            }
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <p class="error-banner">@_error</p>
+            }
+            <a class="link-back" href="/home">@Loc.T("online.back")</a>
         }
-        @if (!string.IsNullOrEmpty(_error))
-        {
-            <p class="error-banner">@_error</p>
-        }
-        <a class="link-back" href="/home">@Loc.T("online.back")</a>
     </div>
 }
 else
@@ -72,6 +85,7 @@ else
     private string? _error;
     private bool _busy;
     private PlayerAccount? _account;
+    private bool _hasPlus;
 
     private void OnLang() => InvokeAsync(StateHasChanged);
 
@@ -79,6 +93,7 @@ else
     {
         Loc.Changed += OnLang;
         _account = await Auth.GetCurrentAsync();
+        _hasPlus = _account?.HasPlus == true;
         if (_account is not null)
             _name = _account.DisplayName;
 
@@ -87,6 +102,9 @@ else
         _deckId = decks.FirstOrDefault(d => d.Faction == fav)?.Id
                   ?? decks.FirstOrDefault(d => d.Faction == Faction.NorthernRealms)?.Id
                   ?? decks[0].Id;
+
+        if (!_hasPlus)
+            return;
 
         _hub = new HubConnectionBuilder()
             .WithUrl(Nav.ToAbsoluteUri("/hubs/game"))
@@ -103,7 +121,7 @@ else
         });
         _hub.On<string>("Error", msg =>
         {
-            _error = msg;
+            _error = MapHubError(msg);
             InvokeAsync(StateHasChanged);
         });
 
@@ -116,11 +134,16 @@ else
         await _hub.StartAsync();
     }
 
+    private string MapHubError(string msg) =>
+        msg.Contains("PlusRequired", StringComparison.OrdinalIgnoreCase)
+            ? Loc.T("plus.required")
+            : msg;
+
     private string? AccountIdArg => _account?.Id.ToString();
 
     private async Task CreateRoom()
     {
-        if (_hub is null) return;
+        if (_hub is null || !_hasPlus) return;
         _busy = true;
         try
         {
@@ -136,14 +159,14 @@ else
         }
         catch (Exception ex)
         {
-            _error = ex.Message;
+            _error = MapHubError(ex.Message);
         }
         finally { _busy = false; }
     }
 
     private async Task JoinRoom()
     {
-        if (_hub is null) return;
+        if (_hub is null || !_hasPlus) return;
         _busy = true;
         try
         {
@@ -160,7 +183,7 @@ else
         }
         catch (Exception ex)
         {
-            _error = ex.Message;
+            _error = MapHubError(ex.Message);
         }
         finally { _busy = false; }
     }

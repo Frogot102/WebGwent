@@ -2,6 +2,7 @@
 @rendermode InteractiveServer
 @inject AccountAuthService Auth
 @inject AccountStore Store
+@inject InviteStore Invites
 @inject LocaleService Loc
 
 <PageTitle>WebGwent — @Loc.T("auth.profile")</PageTitle>
@@ -21,7 +22,17 @@ else
             <PlayerAvatar Account="_account" CssClass="profile-avatar" Size="72" />
             <div class="profile-head">
                 <h1>@_account.DisplayName</h1>
-                <p class="muted">@($"@{_account.Username}") · @Loc.T("auth.rating") <strong>@_account.Rating</strong></p>
+                <p class="muted">
+                    @($"@{_account.Username}") · @Loc.T("auth.rating") <strong>@_account.Rating</strong>
+                    @if (_account.Role == AccountRole.Admin)
+                    {
+                        <span class="plus-pill">Admin</span>
+                    }
+                    else if (_account.HasPlus)
+                    {
+                        <span class="plus-pill">Plus</span>
+                    }
+                </p>
             </div>
             <dl class="profile-stats">
                 <div>
@@ -42,6 +53,82 @@ else
                 <div><dt>@Loc.T("auth.vsBot")</dt><dd>@_account.MatchesVsBot (@_account.WinsVsBot/@_account.LossesVsBot)</dd></div>
             </dl>
         </section>
+
+        <section class="setup-panel wide account-panel plus-panel">
+            <h2>WebGwent Plus</h2>
+            <p class="muted">@Loc.T("plus.benefits")</p>
+            @if (_account.HasPlus)
+            {
+                <p class="ok-banner">
+                    @if (_account.Role == AccountRole.Admin)
+                    {
+                        @Loc.T("plus.activeAdmin")
+                    }
+                    else
+                    {
+                        @Loc.T("plus.activeUntil", _account.PlusUntilUtc?.ToLocalTime().ToString("g") ?? "—")
+                    }
+                </p>
+            }
+            else
+            {
+                <p class="muted">@Loc.T("plus.inactive")</p>
+            }
+
+            <div class="plus-buy-row">
+                <label>@Loc.T("plus.buyLabel")
+                    <select @bind="_buyMonths">
+                        <option value="1">1 @Loc.T("plus.month")</option>
+                        <option value="3">3 @Loc.T("plus.months")</option>
+                        <option value="12">12 @Loc.T("plus.months")</option>
+                    </select>
+                </label>
+                <button class="btn primary" disabled="@_busy" @onclick="BuyPlus">@Loc.T("plus.buyDemo")</button>
+            </div>
+            <p class="muted tiny">@Loc.T("plus.demoNote")</p>
+
+            <label>@Loc.T("plus.inviteCode")
+                <input @bind="_inviteCode" maxlength="32" placeholder="WGNT-XXXX-XXXX" />
+            </label>
+            <button class="btn ghost" disabled="@_busy" @onclick="RedeemInvite">@Loc.T("plus.activate")</button>
+
+            @if (!string.IsNullOrEmpty(_plusMessage))
+            {
+                <p class="@(_plusOk ? "ok-banner" : "error-banner")">@_plusMessage</p>
+            }
+        </section>
+
+        @if (_account.Role == AccountRole.Admin)
+        {
+            <section class="setup-panel wide account-panel">
+                <h2>@Loc.T("plus.adminInvites")</h2>
+                <div class="invite-create">
+                    <label>@Loc.T("plus.durationDays")
+                        <input type="number" @bind="_inviteDays" min="1" max="3650" />
+                    </label>
+                    <label>@Loc.T("plus.maxActivations")
+                        <input type="number" @bind="_inviteMax" min="1" max="1000" />
+                    </label>
+                    <button class="btn primary" disabled="@_busy" @onclick="CreateInvite">@Loc.T("plus.createInvite")</button>
+                </div>
+                @if (!string.IsNullOrEmpty(_createdCode))
+                {
+                    <p class="ok-banner">@Loc.T("plus.createdCode"): <code>@_createdCode</code>
+                        <button class="btn ghost" type="button" @onclick="() => _createdCode = null">OK</button>
+                    </p>
+                }
+                <ul class="invite-list">
+                    @foreach (var inv in _invites)
+                    {
+                        <li class="invite-row @(inv.Revoked || inv.UsedCount >= inv.MaxActivations ? "is-used" : "")">
+                            <code>@inv.Code</code>
+                            <span>@inv.DurationDays d · @inv.UsedCount/@inv.MaxActivations</span>
+                            <button class="btn ghost" type="button" disabled="@_busy" @onclick="() => DeleteInvite(inv.Id)">@Loc.T("plus.deleteInvite")</button>
+                        </li>
+                    }
+                </ul>
+            </section>
+        }
 
         <section class="setup-panel wide account-panel">
             <h2>@Loc.T("auth.editProfile")</h2>
@@ -104,6 +191,15 @@ else
     private bool _busy;
     private bool _hasCustomFile;
 
+    private int _buyMonths = 1;
+    private string _inviteCode = "";
+    private string? _plusMessage;
+    private bool _plusOk;
+    private int _inviteDays = 30;
+    private int _inviteMax = 1;
+    private string? _createdCode;
+    private List<InviteRecord> _invites = [];
+
     private PlayerAccount? _previewAccount => _account is null
         ? null
         : new PlayerAccount
@@ -123,12 +219,88 @@ else
         _avatarId = _account.AvatarId;
         _favCount = Store.FavoriteFactionMatchCount(_account.Id);
         _hasCustomFile = Store.FindAvatarFile(_account.Id) is not null;
+        if (_account.Role == AccountRole.Admin)
+            _invites = Invites.List().ToList();
     }
 
     private void SelectPreset(string id)
     {
         _avatarId = id;
         _message = null;
+    }
+
+    private void BuyPlus()
+    {
+        if (_account is null) return;
+        _busy = true;
+        try
+        {
+            _account = Store.PurchasePlusMonths(_account.Id, _buyMonths);
+            _plusOk = true;
+            _plusMessage = Loc.T("plus.bought");
+        }
+        catch
+        {
+            _plusOk = false;
+            _plusMessage = Loc.T("plus.err.buy");
+        }
+        finally { _busy = false; }
+    }
+
+    private void RedeemInvite()
+    {
+        if (_account is null) return;
+        _busy = true;
+        try
+        {
+            var days = Invites.Redeem(_inviteCode, _account.Id, _account.Username);
+            _account = Store.GrantPlusDays(_account.Id, days);
+            _inviteCode = "";
+            _plusOk = true;
+            _plusMessage = Loc.T("plus.redeemed", days);
+            if (_account.Role == AccountRole.Admin)
+                _invites = Invites.List().ToList();
+        }
+        catch (InvalidOperationException ex)
+        {
+            _plusOk = false;
+            _plusMessage = Loc.T(ex.Message switch
+            {
+                "InviteInvalid" => "plus.err.invalid",
+                "InviteExhausted" => "plus.err.exhausted",
+                "InviteExpired" => "plus.err.expired",
+                "InviteAlreadyUsed" => "plus.err.alreadyUsed",
+                _ => "plus.err.redeem"
+            });
+        }
+        finally { _busy = false; }
+    }
+
+    private void CreateInvite()
+    {
+        if (_account is null || _account.Role != AccountRole.Admin) return;
+        _busy = true;
+        try
+        {
+            var inv = Invites.Create(_account.Id, _inviteDays, _inviteMax);
+            _createdCode = inv.Code;
+            _invites = Invites.List().ToList();
+            _plusOk = true;
+            _plusMessage = Loc.T("plus.inviteCreated");
+        }
+        catch (InvalidOperationException ex)
+        {
+            _plusOk = false;
+            _plusMessage = Loc.T(ex.Message == "InviteLimit" ? "plus.err.limit" : "plus.err.create");
+        }
+        finally { _busy = false; }
+    }
+
+    private void DeleteInvite(string id)
+    {
+        if (_account?.Role != AccountRole.Admin) return;
+        Invites.Delete(id);
+        _invites = Invites.List().ToList();
     }
 
     private async Task OnAvatarSelected(InputFileChangeEventArgs e)
