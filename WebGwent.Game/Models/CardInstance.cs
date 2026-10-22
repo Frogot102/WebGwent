@@ -14,6 +14,13 @@ public sealed class CardInstance
     public Faction Faction { get; set; }
     public CardType Type { get; set; }
     public bool Transformed { get; set; }
+    public LeaderAbility LeaderAbility { get; set; }
+
+    // Printed values: a card that leaves the board (Decoy, transformed Berserker…) returns to them.
+    public int DefaultStrength { get; init; }
+    public CombatRow DefaultRow { get; init; } = CombatRow.None;
+    public string DefaultName { get; init; } = "";
+    public IReadOnlyList<Ability> DefaultAbilities { get; init; } = [];
 
     public static CardInstance FromDefinition(CardDefinition def)
     {
@@ -28,8 +35,27 @@ public sealed class CardInstance
             Description = def.Description ?? "",
             Faction = def.Faction,
             Type = def.Type,
-            PlacedRow = def.Row
+            PlacedRow = def.Row,
+            LeaderAbility = def.LeaderAbility,
+            DefaultStrength = def.Strength,
+            DefaultRow = def.Row,
+            DefaultName = def.Name,
+            DefaultAbilities = def.Abilities.ToList()
         };
+    }
+
+    /// <summary>
+    /// Restores printed strength, name, abilities and row (used when a card goes to the discard pile or back to hand).
+    /// </summary>
+    public void ResetToDefault()
+    {
+        if (string.IsNullOrEmpty(DefaultName))
+            return;
+        BaseStrength = DefaultStrength;
+        PlacedRow = DefaultRow;
+        Name = DefaultName;
+        Abilities = DefaultAbilities.ToList();
+        Transformed = false;
     }
 
     public CardInstance Clone()
@@ -47,7 +73,12 @@ public sealed class CardInstance
             Description = Description,
             Faction = Faction,
             Type = Type,
-            Transformed = Transformed
+            Transformed = Transformed,
+            LeaderAbility = LeaderAbility,
+            DefaultStrength = DefaultStrength,
+            DefaultRow = DefaultRow,
+            DefaultName = DefaultName,
+            DefaultAbilities = DefaultAbilities
         };
     }
 }

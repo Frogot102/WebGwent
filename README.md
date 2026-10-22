@@ -4,10 +4,11 @@
 
 ## Возможности
 
-- Полный цикл матча: муллиган, 3 раунда, пас, победа в 2
-- Механики: погода, Decoy, Scorch, Commander's Horn, Spy, Medic, Tight Bond, Morale Boost, Muster, Agile, Berserker, лидеры
+- Полный цикл матча по правилам TW3: муллиган, у каждого 2 кристалла, проигрыш или ничья в раунде стоит кристалл, максимум 3 раунда, возможна ничья в матче
+- Механики: погода, Decoy, Scorch, Commander's Horn (с выбором ряда), Spy, Medic, Tight Bond, Morale Boost, Muster, Agile, Berserker и Mardroeme, все 20 лидеров TW3
 - Фракционные пассивы: Northern Realms, Nilfgaard, Scoia'tael, Monsters, Skellige
 - Режимы: **против бота**, **онлайн PvP** (SignalR, код комнаты)
+- Бот планирует раунды, оценивает каждый ход на копии матча и проверяет лучшие ходы доигрыванием партии до конца (метод Монте-Карло)
 - Пресет-колоды всех 5 фракций + валидация
 
 ## Запуск
@@ -31,6 +32,6 @@ dotnet test
 |--------|------------|
 | `WebGwent.Game` | Движок правил, каталог карт, бот, сессии |
 | `WebGwent.Server` | Blazor UI + SignalR Hub |
-| `WebGwent.Tests` | Юнит-тесты механик |
+| `WebGwent.Tests` | Юнит-тесты механик, поведения бота и бенчмарк бота |
 
 Подробности для пояснительной записки: [docs/COURSEWORK.md](docs/COURSEWORK.md).

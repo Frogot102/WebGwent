@@ -4,9 +4,41 @@ namespace WebGwent.Game.Engine;
 
 public sealed class RulesEngine
 {
+    public static readonly CombatRow[] BoardRows = [CombatRow.Melee, CombatRow.Ranged, CombatRow.Siege];
+
+    /// <summary>Row-targeted Scorch (Villentretenmerth, Schirrú, Foltest, Francesca) needs the enemy row to total this much.</summary>
+    public const int RowScorchThreshold = 10;
+
     private readonly Random _rng;
 
     public RulesEngine(Random? rng = null) => _rng = rng ?? Random.Shared;
+
+    /// <summary>
+    /// Passive leaders act before the mulligan: White Flame cancels the opponent's leader,
+    /// Daisy of the Valley draws an 11th card. Passive leaders cannot be activated later.
+    /// </summary>
+    public void ApplyLeaderPassives(MatchState match)
+    {
+        foreach (var p in match.Players.Where(p => p.Leader?.LeaderAbility == LeaderAbility.EmhyrWhiteFlame).ToList())
+        {
+            var opp = match.Players[1 - p.Index];
+            opp.LeaderCancelled = true;
+            opp.LeaderUsed = true;
+            match.AddLog($"{p.Name}'s White Flame cancels {opp.Name}'s leader.");
+        }
+
+        foreach (var p in match.Players)
+        {
+            if (p.Leader is null || p.LeaderCancelled || !LeaderAbilities.IsPassive(p.Leader.LeaderAbility))
+                continue;
+            p.LeaderUsed = true;
+            if (p.Leader.LeaderAbility == LeaderAbility.FrancescaDaisy)
+            {
+                Draw(p, 1);
+                match.AddLog($"{p.Name} draws an extra card (Daisy of the Valley).");
+            }
+        }
+    }
 
     public void Mulligan(MatchState match, int playerIndex, Guid cardInstanceId)
     {
@@ -46,6 +78,7 @@ public sealed class RulesEngine
         match.ScoiataelChoseStart = true;
         match.Pending = null;
         match.Phase = MatchPhase.Playing;
+        BeginRound(match);
         match.AddLog($"{match.Players[playerIndex].Name} lets {(startingPlayer == playerIndex ? "themselves" : "the opponent")} start.");
     }
 
@@ -65,20 +98,26 @@ public sealed class RulesEngine
         var card = player.Hand.FirstOrDefault(c => c.InstanceId == cardInstanceId)
                    ?? throw new InvalidOperationException("Card not in hand.");
 
+        player.Hand.Remove(card);
+        match.LastPlayedRow = null;
+        try
+        {
+            if (card.Type == CardType.Special)
+                ResolveSpecial(match, player, card, rowOverride, targetId);
+            else
+                ResolveUnit(match, player, card, rowOverride);
+        }
+        catch
+        {
+            // Validation failed before anything happened — give the card back.
+            if (FindCardAnywhere(match, card.InstanceId) is null)
+                player.Hand.Add(card);
+            throw;
+        }
+
         match.LastRoundResult = null;
         match.LastPlayedCardId = card.InstanceId;
         match.LastActionPlayer = playerIndex;
-        match.LastPlayedRow = null;
-        player.Hand.Remove(card);
-
-        if (card.Type == CardType.Special)
-        {
-            ResolveSpecial(match, player, card, targetId);
-        }
-        else
-        {
-            ResolveUnit(match, player, card, rowOverride, targetId);
-        }
 
         if (match.Pending != null)
             return;
@@ -93,35 +132,118 @@ public sealed class RulesEngine
             throw new InvalidOperationException("Not your pending action.");
 
         var player = match.Players[playerIndex];
-        var source = FindCardAnywhere(match, pending.SourceCardId)
-                     ?? throw new InvalidOperationException("Source card missing.");
+        var enemy = match.Players[1 - playerIndex];
+
+        if (targetId is null && row is null && !pending.CanSkip)
+            throw new InvalidOperationException("A choice is required.");
+        if (targetId is Guid t && !pending.ValidTargets.Contains(t))
+            throw new InvalidOperationException("Invalid target.");
 
         switch (pending.Kind)
         {
             case PendingKind.ChooseAgileRow:
+            {
                 if (row is null || !pending.ValidRows.Contains(row.Value))
                     throw new InvalidOperationException("Invalid row.");
+                var source = FindCardAnywhere(match, pending.SourceCardId)
+                             ?? throw new InvalidOperationException("Source card missing.");
                 player.Discard.RemoveAll(c => c.InstanceId == source.InstanceId);
-                PlaceUnit(match, player, source, row.Value, isSpy: source.Abilities.Contains(Ability.Spy));
                 match.Pending = null;
-                TriggerPostPlace(match, player, source);
+                DeployUnit(match, player, source, row.Value);
                 break;
+            }
 
             case PendingKind.ChooseMedicTarget:
-                if (targetId is null)
-                {
-                    match.Pending = null;
-                    match.AddLog($"{player.Name} skipped medic revive.");
-                    break;
-                }
-                ReviveMedic(match, player, targetId.Value);
                 match.Pending = null;
+                if (targetId is null)
+                    match.AddLog($"{player.Name} skipped medic revive.");
+                else
+                    ReviveMedic(match, player, targetId.Value);
                 break;
 
             case PendingKind.ChooseDecoyTarget:
-                if (targetId is null || !pending.ValidTargets.Contains(targetId.Value))
+            {
+                if (targetId is null)
                     throw new InvalidOperationException("Invalid decoy target.");
-                ApplyDecoy(match, player, source, targetId.Value);
+                var decoy = FindCardAnywhere(match, pending.SourceCardId)
+                            ?? throw new InvalidOperationException("Source card missing.");
+                match.Pending = null;
+                ApplyDecoy(match, player, decoy, targetId.Value);
+                break;
+            }
+
+            case PendingKind.ChooseHornRow:
+                if (row is null || !pending.ValidRows.Contains(row.Value))
+                    throw new InvalidOperationException("Invalid row.");
+                match.Pending = null;
+                ApplyHornCard(match, player, row.Value);
+                break;
+
+            case PendingKind.ChooseMardroemeRow:
+                if (row is null || !pending.ValidRows.Contains(row.Value))
+                    throw new InvalidOperationException("Invalid row.");
+                match.Pending = null;
+                ApplyMardroemeCard(match, player, row.Value);
+                break;
+
+            case PendingKind.ChooseOwnDiscardCard:
+                match.Pending = null;
+                if (targetId is Guid ownId)
+                    TakeIntoHand(match, player, player.Discard, ownId, "from their discard pile");
+                break;
+
+            case PendingKind.ChooseEnemyDiscardCard:
+                match.Pending = null;
+                if (targetId is Guid enemyId)
+                    TakeIntoHand(match, player, enemy.Discard, enemyId, "from the opponent's discard pile");
+                break;
+
+            case PendingKind.ChooseHandDiscard:
+            {
+                var card = player.Hand.First(c => c.InstanceId == targetId);
+                player.Hand.Remove(card);
+                MoveToDiscard(player, card);
+                var remaining = pending.Remaining - 1;
+                match.Pending = null;
+                if (remaining > 0 && player.Hand.Count > 0)
+                {
+                    match.Pending = new PendingAction
+                    {
+                        Kind = PendingKind.ChooseHandDiscard,
+                        PlayerIndex = player.Index,
+                        Remaining = remaining,
+                        ValidTargets = player.Hand.Select(c => c.InstanceId).ToList()
+                    };
+                }
+                else if (player.Deck.Count > 0)
+                {
+                    match.Pending = new PendingAction
+                    {
+                        Kind = PendingKind.ChooseDeckCard,
+                        PlayerIndex = player.Index,
+                        ValidTargets = player.Deck.Select(c => c.InstanceId).ToList()
+                    };
+                }
+                break;
+            }
+
+            case PendingKind.ChooseDeckCard:
+                match.Pending = null;
+                if (targetId is Guid deckId)
+                    TakeIntoHand(match, player, player.Deck, deckId, "from their deck");
+                break;
+
+            case PendingKind.ChooseDeckWeather:
+                match.Pending = null;
+                if (targetId is Guid weatherId)
+                {
+                    var weather = player.Deck.First(c => c.InstanceId == weatherId);
+                    player.Deck.Remove(weather);
+                    PlayWeatherCard(match, player, weather);
+                }
+                break;
+
+            case PendingKind.RevealOpponentCards:
                 match.Pending = null;
                 break;
 
@@ -129,7 +251,8 @@ public sealed class RulesEngine
                 throw new InvalidOperationException("Unsupported pending kind.");
         }
 
-        AfterAction(match, playerIndex);
+        if (match.Pending == null)
+            AfterAction(match, playerIndex);
     }
 
     public void Pass(MatchState match, int playerIndex)
@@ -161,141 +284,175 @@ public sealed class RulesEngine
             throw new InvalidOperationException("Resolve pending action first.");
 
         var player = match.Players[playerIndex];
-        if (player.LeaderUsed || player.Leader is null)
+        if (player.Leader is null || player.LeaderUsed)
             throw new InvalidOperationException("Leader already used or missing.");
+        if (player.LeaderCancelled)
+            throw new InvalidOperationException("Leader ability was cancelled.");
+        if (LeaderAbilities.IsPassive(player.Leader.LeaderAbility))
+            throw new InvalidOperationException("Leader ability is passive.");
 
-        var ability = GetLeaderAbility(player.Leader);
+        var ability = player.Leader.LeaderAbility;
+        if (ability == LeaderAbility.EredinDestroyer && player.Hand.Count < 2)
+            throw new InvalidOperationException("Need at least 2 cards in hand.");
+
+        match.LastRoundResult = null;
         match.LastPlayedCardId = null;
         match.LastPlayedRow = null;
         match.LastActionPlayer = playerIndex;
-        ApplyLeader(match, player, ability);
         player.LeaderUsed = true;
         match.AddLog($"{player.Name} used leader ability.");
-        AfterAction(match, playerIndex);
-    }
+        ApplyLeader(match, player, ability);
 
-    private LeaderAbility GetLeaderAbility(CardInstance leader)
-    {
-        // Leader ability stored via Abilities empty + Name mapping in catalog through Description field pattern.
-        // We encode LeaderAbility in MusterGroup for leaders as "Leader:<enum>"
-        if (leader.MusterGroup?.StartsWith("Leader:") == true
-            && Enum.TryParse<LeaderAbility>(leader.MusterGroup["Leader:".Length..], out var la))
-            return la;
-        return LeaderAbility.None;
+        if (match.Pending == null)
+            AfterAction(match, playerIndex);
     }
 
     private void ApplyLeader(MatchState match, PlayerState player, LeaderAbility ability)
     {
+        var enemy = match.Players[1 - player.Index];
         switch (ability)
         {
-            case LeaderAbility.ClearWeather:
+            case LeaderAbility.FoltestKingOfTemeria:
+                PlayWeatherFromDeck(match, player, Ability.WeatherFog);
+                break;
+            case LeaderAbility.FoltestLordCommander:
                 ClearWeather(match);
+                match.AddLog("Weather cleared.");
                 break;
-            case LeaderAbility.FoltestStorm:
-                ScorchRow(match, CombatRow.Siege, opponentOnly: true, player.Index);
+            case LeaderAbility.FoltestSiegemaster:
+                AddLeaderHorn(match, player, CombatRow.Siege);
                 break;
-            case LeaderAbility.FoltestFog:
-                match.RangedWeather = WeatherEffect.Fog;
-                break;
-            case LeaderAbility.FoltestRain:
-                match.SiegeWeather = WeatherEffect.Rain;
-                break;
-            case LeaderAbility.FoltestSiegeMaster:
-                player.HornRows.Add(CombatRow.Siege);
+            case LeaderAbility.FoltestSteelForged:
+                ScorchEnemyRowIfStrong(match, player, CombatRow.Siege);
                 break;
             case LeaderAbility.FoltestSonOfMedell:
-                ScorchRow(match, CombatRow.Ranged, opponentOnly: true, player.Index);
+                ScorchEnemyRowIfStrong(match, player, CombatRow.Ranged);
                 break;
-            case LeaderAbility.EmhyrSpy:
-                Draw(player, 1);
+
+            case LeaderAbility.EmhyrImperialMajesty:
+                PlayWeatherFromDeck(match, player, Ability.WeatherRain);
                 break;
-            case LeaderAbility.EmhyrLookout:
-                // Look at 3 opponent cards — informational; draw nothing mechanically relevant for AI
-                match.AddLog($"{player.Name} looked at 3 opponent cards.");
-                break;
-            case LeaderAbility.EmhyrImperial:
-                // Cancel opponent leader if unused — mark as used
-                var opp = match.Players[1 - player.Index];
-                if (!opp.LeaderUsed)
-                {
-                    opp.LeaderUsed = true;
-                    match.AddLog($"{opp.Name}'s leader was cancelled.");
-                }
-                break;
-            case LeaderAbility.EmhyrWhiteFlame:
-                // Draw until hand has same number of cards as opponent (max +3 typically simplified: draw 1)
-                var deficit = match.Players[1 - player.Index].Hand.Count - player.Hand.Count;
-                if (deficit > 0)
-                    Draw(player, Math.Min(deficit, 3));
-                break;
-            case LeaderAbility.EmhyrRelentless:
+            case LeaderAbility.EmhyrEmperor:
             {
-                var enemy = match.Players[1 - player.Index];
-                var steal = enemy.Discard.Where(c => c.Type == CardType.Unit && !c.IsHero)
-                    .OrderByDescending(c => c.BaseStrength).FirstOrDefault();
-                if (steal != null)
+                var shown = enemy.Hand.OrderBy(_ => _rng.Next()).Take(3).Select(c => c.InstanceId).ToList();
+                if (shown.Count == 0)
                 {
-                    enemy.Discard.Remove(steal);
-                    player.Hand.Add(steal);
-                    match.AddLog($"{player.Name} took {steal.Name} from enemy discard.");
+                    match.AddLog($"{enemy.Name} has no cards to look at.");
+                    break;
                 }
+                match.Pending = new PendingAction
+                {
+                    Kind = PendingKind.RevealOpponentCards,
+                    PlayerIndex = player.Index,
+                    ValidTargets = shown
+                };
+                match.AddLog($"{player.Name} looks at {shown.Count} of {enemy.Name}'s cards.");
                 break;
             }
-            case LeaderAbility.FrancescaHope:
-                match.MeleeWeather = WeatherEffect.Frost;
+            case LeaderAbility.EmhyrRelentless:
+                OfferCards(match, player, PendingKind.ChooseEnemyDiscardCard, enemy.Discard, "The opponent's discard pile is empty.");
                 break;
-            case LeaderAbility.FrancescaDaisy:
-                Draw(player, 1);
+
+            case LeaderAbility.FrancescaPureblood:
+                PlayWeatherFromDeck(match, player, Ability.WeatherFrost);
+                break;
+            case LeaderAbility.FrancescaBeautiful:
+                AddLeaderHorn(match, player, CombatRow.Ranged);
                 break;
             case LeaderAbility.FrancescaQueen:
-                ScorchRow(match, CombatRow.Melee, opponentOnly: true, player.Index);
+                ScorchEnemyRowIfStrong(match, player, CombatRow.Melee);
                 break;
-            case LeaderAbility.EredinKing:
-                player.HornRows.Add(CombatRow.Melee);
+            case LeaderAbility.FrancescaHope:
+                MoveAgileUnitsToBestRow(match, player);
                 break;
+
             case LeaderAbility.EredinCommander:
-                // Double spy strength — simplified: draw 1 when spy on board
-                Draw(player, 1);
+                AddLeaderHorn(match, player, CombatRow.Melee);
+                break;
+            case LeaderAbility.EredinBringer:
+                OfferCards(match, player, PendingKind.ChooseOwnDiscardCard, player.Discard, "Your discard pile is empty.");
                 break;
             case LeaderAbility.EredinDestroyer:
-            {
-                // Discard up to 2 from hand, then draw 1
-                var trash = player.Hand.Where(c => c.Type == CardType.Unit && !c.IsHero && c.BaseStrength <= 4)
-                    .OrderBy(c => c.BaseStrength).Take(2).ToList();
-                foreach (var t in trash)
+                match.Pending = new PendingAction
                 {
-                    player.Hand.Remove(t);
-                    player.Discard.Add(t);
-                }
-                Draw(player, 1);
+                    Kind = PendingKind.ChooseHandDiscard,
+                    PlayerIndex = player.Index,
+                    Remaining = 2,
+                    ValidTargets = player.Hand.Select(c => c.InstanceId).ToList()
+                };
                 break;
-            }
+            case LeaderAbility.EredinKing:
+                OfferCards(match, player, PendingKind.ChooseDeckWeather,
+                    player.Deck.Where(IsWeatherCard).ToList(), "No weather cards left in the deck.");
+                break;
+
             case LeaderAbility.CrachAnCraite:
-                ShuffleDiscardIntoDeck(player);
-                break;
-            case LeaderAbility.KingBran:
-                // Units under weather keep half strength — tracked via flag in message; apply by clearing weather immunity partial:
-                // Simplified: clear weather for own side by removing weather
-                ClearWeather(match);
-                break;
-            default:
+                foreach (var p in match.Players)
+                    ShuffleDiscardIntoDeck(p);
+                match.AddLog("Both discard piles were shuffled back into the decks.");
                 break;
         }
     }
 
-    private void ResolveUnit(MatchState match, PlayerState player, CardInstance card, CombatRow? rowOverride, Guid? targetId)
+    private static void OfferCards(MatchState match, PlayerState player, PendingKind kind, List<CardInstance> source, string emptyMessage)
     {
-        var isSpy = card.Abilities.Contains(Ability.Spy);
-        var isAgile = card.Abilities.Contains(Ability.Agile);
-
-        CombatRow row;
-        if (isAgile)
+        if (source.Count == 0)
         {
-            if (rowOverride is CombatRow.Melee or CombatRow.Ranged)
-            {
-                row = rowOverride.Value;
-            }
+            match.AddLog(emptyMessage);
+            return;
+        }
+
+        match.Pending = new PendingAction
+        {
+            Kind = kind,
+            PlayerIndex = player.Index,
+            ValidTargets = source.Select(c => c.InstanceId).ToList()
+        };
+    }
+
+    private static void AddLeaderHorn(MatchState match, PlayerState player, CombatRow row)
+    {
+        // Leader horns do nothing on a row that already has a Commander's Horn.
+        if (player.HornRows.Add(row))
+            match.AddLog($"{player.Name}'s leader sounds the horn on {row}.");
+        else
+            match.AddLog($"{row} already has a Commander's Horn.");
+        match.LastPlayedRow = row;
+    }
+
+    private void MoveAgileUnitsToBestRow(MatchState match, PlayerState player)
+    {
+        var moved = 0;
+        foreach (var card in player.Rows[CombatRow.Melee].Concat(player.Rows[CombatRow.Ranged])
+                     .Where(c => c.Type == CardType.Unit && !c.IsHero && c.Abilities.Contains(Ability.Agile))
+                     .ToList())
+        {
+            var from = card.PlacedRow;
+            var to = from == CombatRow.Melee ? CombatRow.Ranged : CombatRow.Melee;
+            var before = ScoreCalculator.GetTotalScore(player, match);
+            MoveOnBoard(player, card, to);
+            if (ScoreCalculator.GetTotalScore(player, match) > before)
+                moved++;
             else
+                MoveOnBoard(player, card, from);
+        }
+
+        match.AddLog($"{player.Name} moved {moved} Agile unit(s).");
+    }
+
+    private static void MoveOnBoard(PlayerState player, CardInstance card, CombatRow to)
+    {
+        player.Rows[card.PlacedRow].Remove(card);
+        card.PlacedRow = to;
+        player.Rows[to].Add(card);
+    }
+
+    private void ResolveUnit(MatchState match, PlayerState player, CardInstance card, CombatRow? rowOverride)
+    {
+        CombatRow row;
+        if (card.Abilities.Contains(Ability.Agile))
+        {
+            if (rowOverride is not (CombatRow.Melee or CombatRow.Ranged))
             {
                 // Park card in discard until row is chosen (removed again on resolve).
                 player.Discard.Add(card);
@@ -309,16 +466,32 @@ public sealed class RulesEngine
                 match.AddLog($"{player.Name} must choose a row for {card.Name}.");
                 return;
             }
+
+            row = rowOverride.Value;
         }
         else
         {
-            row = rowOverride ?? card.PlacedRow;
+            row = card.PlacedRow;
             if (row is CombatRow.None)
                 throw new InvalidOperationException("Unit has no row.");
         }
 
+        DeployUnit(match, player, card, row);
+    }
+
+    /// <summary>Puts a unit on the board and triggers everything it does on arrival.</summary>
+    private void DeployUnit(MatchState match, PlayerState player, CardInstance card, CombatRow row)
+    {
+        var isSpy = card.Abilities.Contains(Ability.Spy);
+        var boardOwner = isSpy ? match.Players[1 - player.Index] : player;
         PlaceUnit(match, player, card, row, isSpy);
-        TriggerPostPlace(match, player, card);
+
+        if (card.Abilities.Contains(Ability.Scorch))
+            ScorchEnemyRowIfStrong(match, player, row);
+
+        if (card.Abilities.Contains(Ability.Mardroeme))
+            boardOwner.MardroemeRows.Add(row);
+        TransformBerserkers(match, boardOwner);
 
         if (card.Abilities.Contains(Ability.Medic))
         {
@@ -359,143 +532,172 @@ public sealed class RulesEngine
             Muster(match, owner, card);
     }
 
-    private void TriggerPostPlace(MatchState match, PlayerState player, CardInstance card)
+    private void ResolveSpecial(MatchState match, PlayerState player, CardInstance card, CombatRow? row, Guid? targetId)
     {
-        if (card.Abilities.Contains(Ability.Scorch) && card.Type == CardType.Unit)
+        if (IsWeatherCard(card))
         {
-            // Villentretenmerth (Melee) / Schirrú (Siege): scorch strongest on that row if >= 10
-            var row = card.PlacedRow;
-            if (row is CombatRow.None) return;
-            var units = match.Players.SelectMany(p => p.Rows[row])
-                .Where(c => !c.IsHero && c.InstanceId != card.InstanceId)
-                .ToList();
-            if (units.Count == 0) return;
-            var max = units.Max(c => ScoreCalculator.GetCardStrength(c, FindOwner(match, c)!, match));
-            if (max >= 10)
+            PlayWeatherCard(match, player, card);
+        }
+        else if (card.Abilities.Contains(Ability.CommandersHorn))
+        {
+            var valid = BoardRows.Where(r => !player.HornRows.Contains(r)).ToList();
+            if (valid.Count == 0)
+                throw new InvalidOperationException("NoHornRows");
+            player.Discard.Add(card);
+            if (row is CombatRow chosen && valid.Contains(chosen))
+                ApplyHornCard(match, player, chosen);
+            else
+                AskForRow(match, player, card, PendingKind.ChooseHornRow, valid, "Commander's Horn");
+        }
+        else if (card.Abilities.Contains(Ability.Mardroeme))
+        {
+            var valid = BoardRows.Where(r => !player.MardroemeRows.Contains(r)).ToList();
+            if (valid.Count == 0)
+                throw new InvalidOperationException("NoMardroemeRows");
+            player.Discard.Add(card);
+            if (row is CombatRow chosen && valid.Contains(chosen))
+                ApplyMardroemeCard(match, player, chosen);
+            else
+                AskForRow(match, player, card, PendingKind.ChooseMardroemeRow, valid, "Mardroeme");
+        }
+        else if (card.Abilities.Contains(Ability.Scorch))
+        {
+            MoveToDiscard(player, card);
+            match.AddLog($"{player.Name} played Scorch.");
+            GlobalScorch(match);
+        }
+        else if (card.Abilities.Contains(Ability.Decoy))
+        {
+            // Own side only — includes enemy spies sitting on your rows. Heroes cannot be Decoyed (TW3).
+            var targets = DecoyTargets(player);
+            if (targets.Count == 0)
+                throw new InvalidOperationException("NoDecoyTargets");
+
+            if (targetId is Guid chosen && targets.Contains(chosen))
             {
-                DestroyUnits(match, units.Where(c =>
-                    ScoreCalculator.GetCardStrength(c, FindOwner(match, c)!, match) == max).ToList());
-                match.AddLog($"Scorch destroyed the strongest {row} unit(s).");
+                ApplyDecoy(match, player, card, chosen);
+                return;
             }
+
+            // Park the Decoy in discard until a target is picked.
+            player.Discard.Add(card);
+            match.Pending = new PendingAction
+            {
+                Kind = PendingKind.ChooseDecoyTarget,
+                PlayerIndex = player.Index,
+                SourceCardId = card.InstanceId,
+                ValidTargets = targets
+            };
+            match.AddLog($"{player.Name} must choose a Decoy target.");
+        }
+        else
+        {
+            MoveToDiscard(player, card);
+            match.AddLog($"{player.Name} played special {card.Name}.");
         }
     }
 
-    private void ResolveSpecial(MatchState match, PlayerState player, CardInstance card, Guid? targetId)
+    public static List<Guid> DecoyTargets(PlayerState player) =>
+        player.AllBoardCards()
+            .Where(c => c.Type == CardType.Unit && !c.IsHero)
+            .Select(c => c.InstanceId)
+            .ToList();
+
+    private static void AskForRow(MatchState match, PlayerState player, CardInstance card, PendingKind kind, List<CombatRow> rows, string what)
+    {
+        match.Pending = new PendingAction
+        {
+            Kind = kind,
+            PlayerIndex = player.Index,
+            SourceCardId = card.InstanceId,
+            ValidRows = rows
+        };
+        match.AddLog($"{player.Name} must choose a row for {what}.");
+    }
+
+    private static void ApplyHornCard(MatchState match, PlayerState player, CombatRow row)
+    {
+        player.HornRows.Add(row);
+        match.LastPlayedRow = row;
+        match.AddLog($"{player.Name} played Commander's Horn on {row}.");
+    }
+
+    private void ApplyMardroemeCard(MatchState match, PlayerState player, CombatRow row)
+    {
+        player.MardroemeRows.Add(row);
+        match.LastPlayedRow = row;
+        match.AddLog($"{player.Name} played Mardroeme on {row}.");
+        TransformBerserkers(match, player);
+    }
+
+    public static bool IsWeatherCard(CardInstance card) =>
+        card.Abilities.Any(a => a is Ability.WeatherFrost or Ability.WeatherFog or Ability.WeatherRain or Ability.WeatherClear);
+
+    private static void PlayWeatherCard(MatchState match, PlayerState player, CardInstance card)
     {
         if (card.Abilities.Contains(Ability.WeatherFrost))
         {
             match.MeleeWeather = WeatherEffect.Frost;
             match.LastPlayedRow = CombatRow.Melee;
-            player.Discard.Add(card);
-            match.AddLog($"{player.Name} played Biting Frost.");
         }
         else if (card.Abilities.Contains(Ability.WeatherFog))
         {
             match.RangedWeather = WeatherEffect.Fog;
             match.LastPlayedRow = CombatRow.Ranged;
-            player.Discard.Add(card);
-            match.AddLog($"{player.Name} played Impenetrable Fog.");
         }
         else if (card.Abilities.Contains(Ability.WeatherRain))
         {
             match.SiegeWeather = WeatherEffect.Rain;
             match.LastPlayedRow = CombatRow.Siege;
-            player.Discard.Add(card);
-            match.AddLog($"{player.Name} played Torrential Rain.");
-        }
-        else if (card.Abilities.Contains(Ability.WeatherClear))
-        {
-            ClearWeather(match);
-            match.LastPlayedRow = null;
-            player.Discard.Add(card);
-            match.AddLog($"{player.Name} played Clear Weather.");
-        }
-        else if (card.Abilities.Contains(Ability.CommandersHorn))
-        {
-            // Apply to row with most units of own, or require row — use row with highest potential
-            var best = new[] { CombatRow.Melee, CombatRow.Ranged, CombatRow.Siege }
-                .OrderByDescending(r => player.Rows[r].Count)
-                .First();
-            player.HornRows.Add(best);
-            match.LastPlayedRow = best;
-            player.Discard.Add(card);
-            match.AddLog($"{player.Name} played Commander's Horn on {best}.");
-        }
-        else if (card.Abilities.Contains(Ability.Scorch))
-        {
-            player.Discard.Add(card);
-            GlobalScorch(match);
-            match.AddLog($"{player.Name} played Scorch.");
-        }
-        else if (card.Abilities.Contains(Ability.Decoy))
-        {
-            // Own side only — includes enemy spies sitting on your rows. Heroes cannot be Decoyed (TW3).
-            var targets = player.AllBoardCards().Where(c => !c.IsHero).Select(c => c.InstanceId).ToList();
-            if (targets.Count == 0)
-            {
-                player.Hand.Add(card); // refund
-                throw new InvalidOperationException("NoDecoyTargets");
-            }
-
-            if (targetId is null || !targets.Contains(targetId.Value))
-            {
-                match.Pending = new PendingAction
-                {
-                    Kind = PendingKind.ChooseDecoyTarget,
-                    PlayerIndex = player.Index,
-                    SourceCardId = card.InstanceId,
-                    ValidTargets = targets
-                };
-                // Park decoy card — store in discard then remove when applied? Keep off lists:
-                // Temporarily hold by not adding anywhere — store via finding. Put in Discard as parking.
-                // Use Hand parking:
-                // Card was removed from hand. Keep reference only via Pending SourceCardId — need storage.
-                player.Discard.Add(card); // temporary; ApplyDecoy will remove decoy from discard and leave it in discard properly
-                match.AddLog($"{player.Name} must choose a Decoy target.");
-                return;
-            }
-
-            ApplyDecoy(match, player, card, targetId.Value);
-        }
-        else if (card.Abilities.Contains(Ability.Mardroeme))
-        {
-            player.Discard.Add(card);
-            TransformBerserkers(match, player);
-            match.AddLog($"{player.Name} played Mardroeme.");
         }
         else
         {
-            player.Discard.Add(card);
-            match.AddLog($"{player.Name} played special {card.Name}.");
+            ClearWeather(match);
+            match.LastPlayedRow = null;
         }
+
+        MoveToDiscard(player, card);
+        match.AddLog($"{player.Name} played {card.Name}.");
     }
 
-    private void ApplyDecoy(MatchState match, PlayerState player, CardInstance decoy, Guid targetId)
+    private static void PlayWeatherFromDeck(MatchState match, PlayerState player, Ability weather)
+    {
+        var card = player.Deck.FirstOrDefault(c => c.Abilities.Contains(weather));
+        if (card is null)
+        {
+            match.AddLog($"No {weather} card left in {player.Name}'s deck.");
+            return;
+        }
+
+        player.Deck.Remove(card);
+        PlayWeatherCard(match, player, card);
+    }
+
+    private static void TakeIntoHand(MatchState match, PlayerState player, List<CardInstance> from, Guid id, string where)
+    {
+        var card = from.First(c => c.InstanceId == id);
+        from.Remove(card);
+        card.ResetToDefault();
+        player.Hand.Add(card);
+        match.AddLog($"{player.Name} took {card.Name} {where}.");
+    }
+
+    private static void ApplyDecoy(MatchState match, PlayerState player, CardInstance decoy, Guid targetId)
     {
         // Decoy may be parked in discard
         player.Discard.RemoveAll(c => c.InstanceId == decoy.InstanceId);
 
-        CardInstance? target = null;
-        CombatRow foundRow = CombatRow.None;
-        foreach (var row in player.Rows.Keys)
-        {
-            target = player.Rows[row].FirstOrDefault(c => c.InstanceId == targetId);
-            if (target != null)
-            {
-                foundRow = row;
-                break;
-            }
-        }
+        var target = player.AllBoardCards().FirstOrDefault(c => c.InstanceId == targetId)
+                     ?? throw new InvalidOperationException("Decoy target not found.");
+        var row = target.PlacedRow;
 
-        if (target is null)
-            throw new InvalidOperationException("Decoy target not found.");
-
-        player.Rows[foundRow].Remove(target);
+        player.Rows[row].Remove(target);
+        target.ResetToDefault();
         player.Hand.Add(target);
-        decoy.PlacedRow = foundRow;
+        decoy.PlacedRow = row;
         decoy.BaseStrength = 0;
-        decoy.Type = CardType.Unit;
-        player.Rows[foundRow].Add(decoy);
+        player.Rows[row].Add(decoy);
+        match.LastPlayedRow = row;
         match.AddLog($"{player.Name} decoyed {target.Name} back to hand.");
     }
 
@@ -507,12 +709,32 @@ public sealed class RulesEngine
             throw new InvalidOperationException("Cannot revive that card.");
 
         player.Discard.Remove(card);
-        // Replay without medic chain recursion for simplicity (no second medic trigger)
-        var row = card.Abilities.Contains(Ability.Agile) ? CombatRow.Melee : card.PlacedRow;
-        if (row == CombatRow.None) row = CombatRow.Melee;
-        var isSpy = card.Abilities.Contains(Ability.Spy);
-        PlaceUnit(match, player, card, row, isSpy);
+        var row = card.Abilities.Contains(Ability.Agile)
+            ? BestAgileRow(match, player, card)
+            : card.PlacedRow == CombatRow.None ? CombatRow.Melee : card.PlacedRow;
         match.AddLog($"{player.Name} revived {card.Name}.");
+        // The revived card is played as if from hand: spies draw, musters muster, medics chain.
+        DeployUnit(match, player, card, row);
+    }
+
+    private static CombatRow BestAgileRow(MatchState match, PlayerState player, CardInstance card)
+    {
+        var best = CombatRow.Melee;
+        var bestScore = int.MinValue;
+        foreach (var row in new[] { CombatRow.Melee, CombatRow.Ranged })
+        {
+            card.PlacedRow = row;
+            player.Rows[row].Add(card);
+            var score = ScoreCalculator.GetTotalScore(player, match);
+            player.Rows[row].Remove(card);
+            if (score > bestScore)
+            {
+                bestScore = score;
+                best = row;
+            }
+        }
+
+        return best;
     }
 
     private void Muster(MatchState match, PlayerState owner, CardInstance card)
@@ -520,26 +742,14 @@ public sealed class RulesEngine
         if (string.IsNullOrEmpty(card.MusterGroup))
             return;
 
-        var group = card.MusterGroup;
-        var pulled = new List<CardInstance>();
-
-        foreach (var c in owner.Hand.Where(c => c.MusterGroup == group && c.InstanceId != card.InstanceId).ToList())
-        {
-            owner.Hand.Remove(c);
-            pulled.Add(c);
-        }
-
-        foreach (var c in owner.Deck.Where(c => c.MusterGroup == group).ToList())
-        {
-            owner.Deck.Remove(c);
-            pulled.Add(c);
-        }
-
+        // TW3: Muster only pulls the matching cards from the deck — copies in hand stay there.
+        var pulled = owner.Deck.Where(c => c.MusterGroup == card.MusterGroup).ToList();
         foreach (var c in pulled)
         {
-            var row = c.PlacedRow == CombatRow.None ? card.PlacedRow : c.PlacedRow;
-            if (c.Abilities.Contains(Ability.Agile))
-                row = card.PlacedRow;
+            owner.Deck.Remove(c);
+            var row = c.PlacedRow == CombatRow.None || c.Abilities.Contains(Ability.Agile)
+                ? card.PlacedRow
+                : c.PlacedRow;
             var target = c.Abilities.Contains(Ability.Spy) ? match.Players[1 - owner.Index] : owner;
             c.PlacedRow = row;
             target.Rows[row].Add(c);
@@ -549,7 +759,7 @@ public sealed class RulesEngine
             match.AddLog($"Muster summoned {pulled.Count} more card(s).");
     }
 
-    private void SummonAvenger(MatchState match, PlayerState boardOwner, CardInstance card)
+    private static void SummonAvenger(MatchState match, PlayerState boardOwner, CardInstance card)
     {
         // Cow → Bovine / Kambi → Hemdall: MusterGroup on the destroyed card names the summon group.
         if (string.IsNullOrEmpty(card.MusterGroup)) return;
@@ -568,15 +778,22 @@ public sealed class RulesEngine
         match.AddLog($"{avenger.Name} was summoned.");
     }
 
-    private void TransformBerserkers(MatchState match, PlayerState player)
+    /// <summary>
+    /// Berserkers on a row with Mardroeme turn into Vildkaarls:
+    /// Berserker → Vildkaarl (14, Morale Boost), Young Berserker → Young Vildkaarl (8, Tight Bond).
+    /// </summary>
+    private static void TransformBerserkers(MatchState match, PlayerState player)
     {
-        foreach (var row in player.Rows.Keys.ToList())
+        foreach (var row in player.MardroemeRows)
         {
-            foreach (var card in player.Rows[row].Where(c => c.Abilities.Contains(Ability.Berserker) && !c.Transformed).ToList())
+            foreach (var card in player.Rows[row].Where(c => c.Abilities.Contains(Ability.Berserker) && !c.Transformed))
             {
+                var young = card.DefaultName.StartsWith("Young", StringComparison.Ordinal);
                 card.Transformed = true;
-                card.BaseStrength = Math.Max(card.BaseStrength * 2, card.BaseStrength + 4);
-                card.Name += " (Transformed)";
+                card.Name = young ? "Young Vildkaarl" : "Vildkaarl";
+                card.BaseStrength = young ? 8 : 14;
+                card.Abilities = young ? [Ability.TightBond] : [Ability.MoraleBoost];
+                match.AddLog($"A Berserker transformed into {card.Name}.");
             }
         }
     }
@@ -594,17 +811,24 @@ public sealed class RulesEngine
         DestroyUnits(match, victims);
     }
 
-    private void ScorchRow(MatchState match, CombatRow row, bool opponentOnly, int playerIndex)
+    /// <summary>
+    /// Destroys the strongest non-Hero unit(s) in the enemy's row, but only if that row totals 10 or more.
+    /// </summary>
+    private void ScorchEnemyRowIfStrong(MatchState match, PlayerState player, CombatRow row)
     {
-        var players = opponentOnly
-            ? [match.Players[1 - playerIndex]]
-            : match.Players;
+        var enemy = match.Players[1 - player.Index];
+        if (ScoreCalculator.GetRowScore(enemy, row, match) < RowScorchThreshold)
+        {
+            match.AddLog($"Scorch on {row}: the enemy row is below {RowScorchThreshold}.");
+            return;
+        }
 
-        var units = players.SelectMany(p => p.Rows[row]).Where(c => !c.IsHero).ToList();
+        var units = enemy.Rows[row].Where(c => c.Type == CardType.Unit && !c.IsHero).ToList();
         if (units.Count == 0) return;
-        var max = units.Max(c => ScoreCalculator.GetCardStrength(c, FindOwner(match, c)!, match));
-        DestroyUnits(match, units.Where(c =>
-            ScoreCalculator.GetCardStrength(c, FindOwner(match, c)!, match) == max).ToList());
+        var max = units.Max(c => ScoreCalculator.GetCardStrength(c, enemy, match));
+        if (max <= 0) return;
+        DestroyUnits(match, units.Where(c => ScoreCalculator.GetCardStrength(c, enemy, match) == max).ToList());
+        match.AddLog($"Scorch destroyed the strongest enemy {row} unit(s).");
     }
 
     private void DestroyUnits(MatchState match, List<CardInstance> units)
@@ -614,18 +838,29 @@ public sealed class RulesEngine
             var owner = FindOwner(match, unit);
             if (owner is null) continue;
             owner.Rows[unit.PlacedRow].Remove(unit);
-            owner.Discard.Add(unit);
+            var row = unit.PlacedRow;
+            MoveToDiscard(owner, unit);
             if (unit.Abilities.Contains(Ability.SummonAvenger))
+            {
+                unit.PlacedRow = row;
                 SummonAvenger(match, owner, unit);
+                unit.ResetToDefault();
+            }
         }
     }
 
-    private PlayerState? FindOwner(MatchState match, CardInstance card)
+    private static void MoveToDiscard(PlayerState owner, CardInstance card)
+    {
+        card.ResetToDefault();
+        owner.Discard.Add(card);
+    }
+
+    private static PlayerState? FindOwner(MatchState match, CardInstance card)
     {
         return match.Players.FirstOrDefault(p => p.AllBoardCards().Any(c => c.InstanceId == card.InstanceId));
     }
 
-    private CardInstance? FindCardAnywhere(MatchState match, Guid id)
+    public static CardInstance? FindCardAnywhere(MatchState match, Guid id)
     {
         foreach (var p in match.Players)
         {
@@ -638,7 +873,7 @@ public sealed class RulesEngine
         return null;
     }
 
-    private void ClearWeather(MatchState match)
+    private static void ClearWeather(MatchState match)
     {
         match.MeleeWeather = WeatherEffect.None;
         match.RangedWeather = WeatherEffect.None;
@@ -677,20 +912,17 @@ public sealed class RulesEngine
         int? roundWinner;
         if (s0 > s1) roundWinner = 0;
         else if (s1 > s0) roundWinner = 1;
+        else if (match.Players[0].Faction == Faction.Nilfgaard && match.Players[1].Faction != Faction.Nilfgaard)
+            roundWinner = 0; // Nilfgaard wins draws
+        else if (match.Players[1].Faction == Faction.Nilfgaard && match.Players[0].Faction != Faction.Nilfgaard)
+            roundWinner = 1;
         else
-        {
-            // Nilfgaard wins draws
-            if (match.Players[0].Faction == Faction.Nilfgaard && match.Players[1].Faction != Faction.Nilfgaard)
-                roundWinner = 0;
-            else if (match.Players[1].Faction == Faction.Nilfgaard && match.Players[0].Faction != Faction.Nilfgaard)
-                roundWinner = 1;
-            else
-                roundWinner = null; // both get a gem? In TW3 both lose a gem / neither wins — treat as both "win" count no — actually both lose the round gem (no one gets gem). So neither RoundWins++.
-        }
+            roundWinner = null;
 
         if (roundWinner is int w)
         {
             match.Players[w].RoundWins++;
+            match.Players[1 - w].Lives--;
             match.AddLog($"{match.Players[w].Name} wins the round.");
             if (match.Players[w].Faction == Faction.NorthernRealms)
             {
@@ -700,7 +932,10 @@ public sealed class RulesEngine
         }
         else
         {
-            match.AddLog("Round is a draw — no gem awarded.");
+            // TW3: a drawn round costs both players a crystal.
+            foreach (var p in match.Players)
+                p.Lives--;
+            match.AddLog("Round is a draw — both players lose a crystal.");
         }
 
         var result = new RoundResult
@@ -714,14 +949,15 @@ public sealed class RulesEngine
         match.RoundHistory.Add(result);
         match.LastPlayedCardId = null;
 
-        if (match.Players[0].RoundWins >= 2 || match.Players[1].RoundWins >= 2)
+        var alive0 = match.Players[0].Lives > 0;
+        var alive1 = match.Players[1].Lives > 0;
+        if (!alive0 || !alive1)
         {
             match.Phase = MatchPhase.MatchEnd;
-            match.Winner = match.Players[0].RoundWins >= 2 ? 0 : 1;
-            // If somehow both 2 — higher rounds already decided
-            if (match.Players[0].RoundWins >= 2 && match.Players[1].RoundWins >= 2)
-                match.Winner = s0 >= s1 ? 0 : 1;
-            match.AddLog($"{match.Players[match.Winner.Value].Name} wins the match!");
+            match.Winner = alive0 ? 0 : alive1 ? 1 : null;
+            match.AddLog(match.Winner is int mw
+                ? $"{match.Players[mw].Name} wins the match!"
+                : "The match ends in a draw.");
             return;
         }
 
@@ -757,13 +993,17 @@ public sealed class RulesEngine
         match.ActivePlayer = match.StartingPlayer;
         match.Phase = MatchPhase.Playing;
         match.LastRoundResult = null;
+        BeginRound(match);
         match.AddLog($"Round {match.RoundNumber} begins. {match.CurrentPlayer.Name} starts.");
     }
 
+    /// <summary>
+    /// Skellige: two random units from the discard pile return to the battlefield at the start of round 3.
+    /// </summary>
     private void SkelligeRevive(MatchState match, PlayerState player)
     {
-        var units = player.Discard.Where(c => c.Type == CardType.Unit && !c.IsHero)
-            .OrderByDescending(c => c.BaseStrength)
+        var units = player.Discard.Where(c => c.Type == CardType.Unit)
+            .OrderBy(_ => _rng.Next())
             .Take(2)
             .ToList();
         foreach (var u in units)
@@ -808,7 +1048,14 @@ public sealed class RulesEngine
 
         match.ActivePlayer = match.StartingPlayer;
         match.Phase = MatchPhase.Playing;
+        BeginRound(match);
         match.AddLog($"Match starts. {match.CurrentPlayer.Name} goes first.");
+    }
+
+    private static void BeginRound(MatchState match)
+    {
+        foreach (var p in match.Players)
+            p.HandAtRoundStart = p.Hand.Count;
     }
 
     public static void Draw(PlayerState player, int count)
@@ -832,6 +1079,8 @@ public sealed class RulesEngine
 
     private void ShuffleDiscardIntoDeck(PlayerState player)
     {
+        foreach (var card in player.Discard)
+            card.ResetToDefault();
         player.Deck.AddRange(player.Discard);
         player.Discard.Clear();
         Shuffle(player.Deck);

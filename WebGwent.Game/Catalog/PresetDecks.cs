@@ -29,7 +29,7 @@ public static class PresetDecks
         "ng_leader_emhyr_imperial",
         [
             "ng_letho", "ng_menno", "ng_tibor", "ng_morvran",
-            "ng_cahir", "ng_stefan", "ng_shilard", "ng_young_evelyn",
+            "ng_cahir", "ng_stefan", "ng_shilard", "ng_young_evelyn", "ng_young_emissary2",
             "ng_vattier", "ng_assire", "ng_fringilla",
             "ng_etolian1", "ng_etolian2", "ng_rainfarn", "ng_vanhemar",
             "ng_rotten1", "ng_rotten2",
@@ -61,7 +61,7 @@ public static class PresetDecks
     public static DeckList Monsters() => new(
         "Monsters — Eredin",
         Faction.Monsters,
-        "mo_leader_eredin_king",
+        "mo_leader_eredin_cmd",
         [
             "mo_draug", "mo_kayran", "mo_imlerith", "mo_leshen",
             "mo_arachas_behemoth", "mo_arachas1", "mo_arachas2", "mo_arachas3",
