@@ -88,6 +88,10 @@
                 else if (OppProfile?.IsBot == true)
                 {
                     <div class="meta-rating bot">BOT</div>
+                    @if (OppProfile.BotDifficulty is { } botDiff)
+                    {
+                        <div class="meta-bot-diff">@BotDifficultyLabel(botDiff)</div>
+                    }
                 }
                 <div class="meta-gems" title="@Loc.T("board.lives")">@Gems(View.Opponent.Lives)</div>
                 <div class="score-badge big" title="@Loc.T("board.power")">
@@ -349,7 +353,10 @@
                 }
                 <div class="match-actions">
                     <a class="btn primary" href="/home">@Loc.T("board.menu")</a>
-                    <a class="btn ghost" href="/play/bot">@Loc.T("board.playAgain")</a>
+                    @if (OnPlayAgain.HasDelegate)
+                    {
+                        <button type="button" class="btn ghost" @onclick="PlayAgainAsync">@Loc.T("board.playAgain")</button>
+                    }
                 </div>
             </div>
         </div>
@@ -369,6 +376,9 @@
     [Parameter] public EventCallback OnUseLeader { get; set; }
     [Parameter] public EventCallback<(Guid? Target, CombatRow? Row)> OnResolvePending { get; set; }
     [Parameter] public EventCallback<int> OnChooseStart { get; set; }
+    [Parameter] public EventCallback OnPlayAgain { get; set; }
+
+    private Task PlayAgainAsync() => OnPlayAgain.InvokeAsync();
 
     private CardView? _selected;
     private CardView? _inspected;
@@ -381,6 +391,7 @@
     private int _toastKey;
     private Guid? _lastFlyCardId;
     private Guid? _lastInspectedPlayId;
+    private Guid _boundMatchId;
 
     private CardView? Inspected => _inspected ?? _selected;
 
@@ -395,6 +406,21 @@
 
     protected override void OnParametersSet()
     {
+        if (View is not null && View.MatchId != _boundMatchId)
+        {
+            _boundMatchId = View.MatchId;
+            _selected = null;
+            _inspected = null;
+            _agileRow = CombatRow.Melee;
+            _showDiscard = false;
+            _dismissRound = false;
+            _seenRoundBanner = -1;
+            _lastToastSource = null;
+            _toastText = null;
+            _lastFlyCardId = null;
+            _lastInspectedPlayId = null;
+        }
+
         if (View?.LastRound is { } rr && rr.RoundNumber != _seenRoundBanner)
         {
             _seenRoundBanner = rr.RoundNumber;
@@ -533,6 +559,15 @@
 
     /// <summary>Filled gems = crystals (lives) left.</summary>
     private static string Gems(int lives) => string.Concat(Enumerable.Range(0, 2).Select(i => i < lives ? "◆" : "◇"));
+
+    private string BotDifficultyLabel(BotDifficulty d) => d switch
+    {
+        BotDifficulty.Easy => Loc.T("play.diff.easy"),
+        BotDifficulty.Medium => Loc.T("play.diff.medium"),
+        BotDifficulty.High => Loc.T("play.diff.high"),
+        BotDifficulty.DeathMarch => Loc.T("play.diff.death"),
+        _ => d.ToString()
+    };
 
     private string MatchResultLabel =>
         View!.IsDraw ? Loc.T("board.matchDraw")

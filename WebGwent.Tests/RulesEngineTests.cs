@@ -89,6 +89,12 @@ public class RulesEngineTests
         var owner = match.Players[p.Index];
         var onBoard = owner.Rows[CombatRow.Melee].First(c => c.InstanceId == unit.InstanceId);
         Assert.Equal(1, ScoreCalculator.GetCardStrength(onBoard, owner, match));
+
+        // Cards still in hand keep printed strength even when their default row has weather.
+        var inHand = owner.Hand.FirstOrDefault(c =>
+            c.Type == CardType.Unit && !c.IsHero && c.PlacedRow == CombatRow.Melee);
+        if (inHand is not null)
+            Assert.Equal(inHand.BaseStrength, ScoreCalculator.GetCardStrength(inHand, owner, match));
     }
 
     [Fact]
