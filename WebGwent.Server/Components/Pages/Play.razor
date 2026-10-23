@@ -66,7 +66,8 @@ else
                OnPass="Pass"
                OnUseLeader="UseLeader"
                OnResolvePending="ResolvePending"
-               OnChooseStart="ChooseStart" />
+               OnChooseStart="ChooseStart"
+               OnPlayAgain="PlayAgain" />
 }
 
 @code {
@@ -120,6 +121,8 @@ else
     private string DeckLabel(SavedDeck d) =>
         $"{(d.IsPreset ? "★ " : "")}{d.Name} ({Loc.FactionName(d.Faction)})";
 
+    private Task PlayAgain() => Start();
+
     private async Task Start()
     {
         var d0 = Sessions.Decks.Get(_deck0Id) ?? throw new InvalidOperationException("Deck 1 missing");
@@ -139,6 +142,11 @@ else
             return;
         }
 
+        _botCts?.Cancel();
+        _botCts?.Dispose();
+        _botCts = null;
+        _botBusy = false;
+
         var youName = _account?.DisplayName ?? Loc.T("play.you");
         var botName = Loc.T("play.botName");
         var match = Sessions.CreateLocal(GameMode.VsBot, d0.ToDeckList(), d1.ToDeckList(),
@@ -149,8 +157,9 @@ else
         _viewer = 0;
         _matchEndSwept = false;
         _matchRecorded = false;
+        _error = null;
         _youProfile = _account is not null ? BoardProfile.FromAccount(_account) : BoardProfile.Guest(youName);
-        _oppProfile = BoardProfile.Bot(botName);
+        _oppProfile = BoardProfile.Bot(botName, _difficulty);
         Refresh();
         await AnimateBotAsync();
     }

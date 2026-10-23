@@ -14,8 +14,12 @@ public static class ScoreCalculator
         if (card.IsHero)
             return card.BaseStrength;
 
+        // Hand / deck / discard keep printed strength — weather, horn, bond and morale
+        // only apply once the card is actually on a board row (TW3 behaviour).
         var row = card.PlacedRow;
-        if (!owner.Rows.TryGetValue(row, out var rowCards))
+        if (row is CombatRow.None
+            || !owner.Rows.TryGetValue(row, out var rowCards)
+            || rowCards.All(c => c.InstanceId != card.InstanceId))
             return card.BaseStrength;
 
         var strength = card.BaseStrength;
