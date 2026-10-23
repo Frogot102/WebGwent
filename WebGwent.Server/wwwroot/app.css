@@ -767,6 +767,14 @@ img.meta-avatar.avatar-img {
   color: var(--muted);
   border-color: rgba(255,255,255,0.12);
 }
+.meta-bot-diff {
+  font-size: 0.68rem;
+  color: var(--muted);
+  letter-spacing: 0.03em;
+  line-height: 1.2;
+  text-align: center;
+  max-width: 7rem;
+}
 .meta-gems {
   color: var(--gold);
   letter-spacing: 0.12em;
