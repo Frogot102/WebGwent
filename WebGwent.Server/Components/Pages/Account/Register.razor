@@ -1,8 +1,10 @@
 @page "/account/register"
 @attribute [AllowAnonymous]
 @layout AuthLayout
-@rendermode InteractiveServer
 @inject LocaleService Loc
+@inject AccountAuthService Auth
+@inject NavigationManager Nav
+@using WebGwent.Server.Services
 
 <PageTitle>WebGwent — @Loc.T("auth.register")</PageTitle>
 
@@ -13,45 +15,58 @@
         <p class="lede">@Loc.T("auth.gateLede")</p>
     </div>
 
-    <form class="setup-panel wide account-panel" method="post" action="/api/auth/register">
+    <div class="setup-panel wide account-panel">
         <h2>@Loc.T("auth.register")</h2>
         <label>@Loc.T("auth.username")
-            <input name="username" maxlength="24" autocomplete="username" required />
+            <input @bind="_username" maxlength="24" autocomplete="username" />
         </label>
         <label>@Loc.T("auth.displayName")
-            <input name="displayName" maxlength="24" />
+            <input @bind="_displayName" maxlength="24" />
         </label>
         <label>@Loc.T("auth.password")
-            <input name="password" type="password" maxlength="64" autocomplete="new-password" required />
+            <input @bind="_password" type="password" maxlength="64" autocomplete="new-password" />
         </label>
         <label>@Loc.T("auth.passwordConfirm")
-            <input name="passwordConfirm" type="password" maxlength="64" autocomplete="new-password" required />
+            <input @bind="_passwordConfirm" type="password" maxlength="64" autocomplete="new-password" />
         </label>
         @if (!string.IsNullOrEmpty(_error))
         {
             <div class="error-banner">@_error</div>
         }
-        <button type="submit" class="btn primary">@Loc.T("auth.register")</button>
+        <button type="button" class="btn primary" disabled="@_busy" @onclick="DoRegister">@Loc.T("auth.register")</button>
         <p class="account-switch">@Loc.T("auth.hasAccount") <a href="/account/login">@Loc.T("auth.login")</a></p>
-    </form>
+    </div>
 </section>
 
 @code {
-    [SupplyParameterFromQuery(Name = "error")] public string? ErrorCode { get; set; }
-
+    private string _username = "";
+    private string _displayName = "";
+    private string _password = "";
+    private string _passwordConfirm = "";
     private string? _error;
+    private bool _busy;
 
-    protected override void OnInitialized()
+    private async Task DoRegister()
     {
-        _error = ErrorCode switch
+        _busy = true;
+        _error = null;
+        try
         {
-            "mismatch" => Loc.T("auth.err.passwordMismatch"),
-            "taken" => Loc.T("auth.err.usernameTaken"),
-            "ulen" => Loc.T("auth.err.usernameLength"),
-            "uchars" => Loc.T("auth.err.usernameChars"),
-            "plen" => Loc.T("auth.err.passwordLength"),
-            "fail" => Loc.T("auth.err.save"),
-            _ => null
-        };
+            await Auth.RegisterAsync(_username, _password, _passwordConfirm, _displayName);
+            Nav.NavigateTo("/home");
+        }
+        catch (InvalidOperationException ex)
+        {
+            _error = Loc.T(ex.Message switch
+            {
+                "mismatch" => "auth.err.passwordMismatch",
+                "UsernameTaken" => "auth.err.usernameTaken",
+                "UsernameLength" => "auth.err.usernameLength",
+                "UsernameChars" => "auth.err.usernameChars",
+                "PasswordLength" => "auth.err.passwordLength",
+                _ => "auth.err.save"
+            });
+        }
+        finally { _busy = false; }
     }
 }

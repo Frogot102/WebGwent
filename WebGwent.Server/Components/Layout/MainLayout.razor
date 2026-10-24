@@ -1,7 +1,12 @@
-﻿@inherits LayoutComponentBase
+@inherits LayoutComponentBase
 @inject LocaleService Loc
 @inject AccountAuthService Auth
+@inject TokenStore Tokens
+@inject AuthenticationStateProvider AuthState
 @implements IDisposable
+@using Microsoft.AspNetCore.Components.Authorization
+@using WebGwent.Server.Accounts
+@using WebGwent.Server.Services
 
 <div class="menu-shell @(_showAds ? "with-ads" : "")">
     <header class="menu-header">
@@ -23,7 +28,7 @@
                     <span class="nav-rating">@_account.Rating</span>
                 </a>
                 <a href="/account/history">@Loc.T("auth.history")</a>
-                <a href="/api/auth/logout">@Loc.T("auth.logout")</a>
+                <a href="/account/logout">@Loc.T("auth.logout")</a>
             }
             else
             {
@@ -60,15 +65,43 @@
 
 @code {
     private PlayerAccount? _account;
-    private bool _showAds = true;
+    private bool _showAds;
 
     protected override async Task OnInitializedAsync()
     {
         Loc.Changed += OnChanged;
+        AuthState.AuthenticationStateChanged += OnAuthChanged;
+        await Tokens.EnsureHydratedAsync();
+        await RefreshAccountAsync();
+    }
+
+    private async void OnAuthChanged(Task<AuthenticationState> _)
+    {
+        try
+        {
+            await InvokeAsync(async () =>
+            {
+                await RefreshAccountAsync();
+                StateHasChanged();
+            });
+        }
+        catch
+        {
+            /* disposed */
+        }
+    }
+
+    private async Task RefreshAccountAsync()
+    {
         _account = await Auth.GetCurrentAsync();
         _showAds = _account?.ShowAds ?? true;
     }
 
     private void OnChanged() => InvokeAsync(StateHasChanged);
-    public void Dispose() => Loc.Changed -= OnChanged;
+
+    public void Dispose()
+    {
+        Loc.Changed -= OnChanged;
+        AuthState.AuthenticationStateChanged -= OnAuthChanged;
+    }
 }

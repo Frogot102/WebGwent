@@ -20,12 +20,16 @@
 
 ## Запуск
 
+Нужны **два** процесса — API и UI:
+
 ```bash
 dotnet restore
+dotnet run --project WebGwent.Api
 dotnet run --project WebGwent.Server
 ```
 
-Откройте URL из консоли (обычно `https://localhost:7xxx`).
+UI: http://localhost:5097 · API: http://localhost:5180  
+Как устроены endpoint’ы: [docs/API.md](docs/API.md).
 
 Тесты:
 
@@ -38,7 +42,8 @@ dotnet test
 | Проект | Назначение |
 |--------|------------|
 | `WebGwent.Game` | Движок правил, каталог карт, бот, сессии |
-| `WebGwent.Server` | Blazor UI + SignalR Hub |
+| `WebGwent.Api` | REST + SignalR (JWT), аккаунты, матчи, колоды |
+| `WebGwent.Server` | Blazor UI — клиент API |
 | `WebGwent.Tests` | Юнит-тесты механик, поведения бота и бенчмарк бота |
 
 Подробности для пояснительной записки: [docs/COURSEWORK.md](docs/COURSEWORK.md).

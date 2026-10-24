@@ -20,6 +20,8 @@ public sealed class GameRoom
     public DeckList? GuestDeck { get; set; }
     public bool GuestJoined { get; set; }
     public DateTime LastActivityUtc { get; set; } = DateTime.UtcNow;
+    /// <summary>Monotonic board version for clients to ignore stale GetBoard pulls.</summary>
+    public long StateRevision { get; set; }
 }
 
 public sealed class GameSessionManager
@@ -33,10 +35,10 @@ public sealed class GameSessionManager
     private readonly ConcurrentDictionary<BotDifficulty, BotAI> _bots = new();
     private readonly object _lock = new();
 
-    public GameSessionManager()
+    public GameSessionManager(string? deckStoragePath = null)
     {
         _catalog = CardCatalog.LoadEmbedded();
-        _decks = new DeckLibrary(_catalog);
+        _decks = new DeckLibrary(_catalog, deckStoragePath);
         _engine = new RulesEngine();
         _factory = new MatchFactory(_catalog, _engine);
     }
@@ -139,30 +141,34 @@ public sealed class GameSessionManager
 
     public string CreateRoom(Faction hostFaction, string hostConnectionId, string hostName, DeckList? hostDeck = null, Guid? hostAccountId = null)
     {
-        var code = GenerateCode();
         var deck = hostDeck ?? PresetDecks.ForFaction(hostFaction);
-        // Placeholder match until guest joins (replaced in JoinRoom).
-        var placeholder = new MatchState
+        for (var attempt = 0; attempt < 32; attempt++)
         {
-            Mode = GameMode.Online,
-            Phase = MatchPhase.Mulligan,
-            Players =
-            [
-                new PlayerState { Index = 0, Name = hostName, Faction = deck.Faction },
-                new PlayerState { Index = 1, Name = "Waiting...", Faction = Faction.Neutral }
-            ]
-        };
-        var room = new GameRoom
-        {
-            Code = code,
-            HostFaction = deck.Faction,
-            HostConnectionId = hostConnectionId,
-            HostDeck = deck,
-            HostAccountId = hostAccountId,
-            Match = placeholder
-        };
-        _rooms[code] = room;
-        return code;
+            var code = GenerateCode();
+            // Placeholder match until guest joins (replaced in JoinRoom).
+            var placeholder = new MatchState
+            {
+                Mode = GameMode.Online,
+                Phase = MatchPhase.Mulligan,
+                Players =
+                [
+                    new PlayerState { Index = 0, Name = hostName, Faction = deck.Faction },
+                    new PlayerState { Index = 1, Name = "Waiting...", Faction = Faction.Neutral }
+                ]
+            };
+            var room = new GameRoom
+            {
+                Code = code,
+                HostFaction = deck.Faction,
+                HostConnectionId = hostConnectionId,
+                HostDeck = deck,
+                HostAccountId = hostAccountId,
+                Match = placeholder
+            };
+            if (_rooms.TryAdd(code, room))
+                return code;
+        }
+        throw new InvalidOperationException("Could not allocate room code.");
     }
 
     public GameRoom JoinRoom(string code, Faction guestFaction, string guestConnectionId, string guestName, DeckList? guestDeck = null, Guid? guestAccountId = null)
@@ -191,6 +197,7 @@ public sealed class GameSessionManager
             room.Match.Players[0].ConnectionId = room.HostConnectionId;
             room.Match.Players[1].ConnectionId = guestConnectionId;
             _local[room.Match.MatchId] = room.Match;
+            room.StateRevision++;
             room.LastActivityUtc = DateTime.UtcNow;
             return room;
         }
@@ -199,18 +206,92 @@ public sealed class GameSessionManager
     public GameRoom? GetRoom(string code) =>
         _rooms.TryGetValue(code, out var r) ? r : null;
 
+    public IReadOnlyCollection<GameRoom> AllRooms => _rooms.Values.ToArray();
+
     public GameRoom? FindRoomByConnection(string connectionId) =>
         _rooms.Values.FirstOrDefault(r =>
             r.HostConnectionId == connectionId || r.GuestConnectionId == connectionId);
 
     public void RebindConnection(string code, int playerIndex, string connectionId)
     {
-        if (!_rooms.TryGetValue(code, out var room)) return;
-        if (playerIndex == 0) room.HostConnectionId = connectionId;
-        else room.GuestConnectionId = connectionId;
-        if (room.Match.Players.Length > playerIndex)
-            room.Match.Players[playerIndex].ConnectionId = connectionId;
-        room.LastActivityUtc = DateTime.UtcNow;
+        lock (_lock)
+        {
+            if (!_rooms.TryGetValue(code, out var room)) return;
+            if (playerIndex == 0) room.HostConnectionId = connectionId;
+            else room.GuestConnectionId = connectionId;
+            if (room.Match.Players.Length > playerIndex)
+                room.Match.Players[playerIndex].ConnectionId = connectionId;
+            room.LastActivityUtc = DateTime.UtcNow;
+        }
+    }
+
+    /// <summary>Clear a dropped SignalR connection id without deleting the room.</summary>
+    public void ClearConnection(string connectionId)
+    {
+        lock (_lock)
+        {
+            foreach (var room in _rooms.Values)
+            {
+                if (string.Equals(room.HostConnectionId, connectionId, StringComparison.Ordinal))
+                    room.HostConnectionId = null;
+                if (string.Equals(room.GuestConnectionId, connectionId, StringComparison.Ordinal))
+                    room.GuestConnectionId = null;
+            }
+        }
+    }
+
+    /// <summary>Advance RoundEnd → next round. Returns false if not in RoundEnd.</summary>
+    public bool TryContinueRound(string code)
+    {
+        lock (_lock)
+        {
+            if (!_rooms.TryGetValue(code, out var room) || !room.GuestJoined)
+                return false;
+            if (room.Match.Phase != MatchPhase.RoundEnd)
+                return false;
+            _engine.ContinueAfterRound(room.Match);
+            room.StateRevision++;
+            room.LastActivityUtc = DateTime.UtcNow;
+            return true;
+        }
+    }
+
+    /// <summary>Apply AFK turn timeout if due. Returns true when state changed.</summary>
+    public bool TryApplyTurnTimeout(string code)
+    {
+        lock (_lock)
+        {
+            if (!_rooms.TryGetValue(code, out var room) || !room.GuestJoined)
+                return false;
+            if (room.Match.Phase != MatchPhase.Playing || room.Match.Pending != null)
+                return false;
+            if (DateTime.UtcNow - room.Match.LastActionUtc < TurnTimeout)
+                return false;
+            var phaseBefore = room.Match.Phase;
+            var activeBefore = room.Match.ActivePlayer;
+            ApplyTimeoutPass(room.Match);
+            if (room.Match.Phase == phaseBefore && room.Match.ActivePlayer == activeBefore)
+                return false;
+            room.StateRevision++;
+            room.LastActivityUtc = DateTime.UtcNow;
+            return true;
+        }
+    }
+
+    public int PruneIdleRooms(TimeSpan maxIdle)
+    {
+        var removed = 0;
+        var cutoff = DateTime.UtcNow - maxIdle;
+        foreach (var kv in _rooms)
+        {
+            if (kv.Value.LastActivityUtc >= cutoff) continue;
+            if (_rooms.TryRemove(kv.Key, out var room))
+            {
+                _local.TryRemove(room.Match.MatchId, out _);
+                removed++;
+            }
+        }
+        return removed;
     }
 
     public MatchView ActRoom(string code, int playerIndex, Action<MatchState, RulesEngine> action)
@@ -222,9 +303,8 @@ public sealed class GameSessionManager
                 throw new InvalidOperationException("Waiting for opponent.");
             ApplyTimeoutPass(room.Match);
             action(room.Match, _engine);
-            // Online clients don't share the bot sweep pipeline — advance immediately.
-            if (room.Match.Phase == MatchPhase.RoundEnd)
-                _engine.ContinueAfterRound(room.Match);
+            // Leave RoundEnd for clients (banner). Server RoomWatch continues after a short pause.
+            room.StateRevision++;
             room.LastActivityUtc = DateTime.UtcNow;
             return MatchView.From(room.Match, playerIndex);
         }

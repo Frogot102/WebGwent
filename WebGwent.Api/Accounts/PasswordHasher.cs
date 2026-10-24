@@ -1,6 +1,6 @@
 using System.Security.Cryptography;
 
-namespace WebGwent.Server.Accounts;
+namespace WebGwent.Api.Accounts;
 
 public static class PasswordHasher
 {

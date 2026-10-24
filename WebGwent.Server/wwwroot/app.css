@@ -262,7 +262,13 @@ img.profile-avatar.avatar-img {
 }
 .menu-main { flex: 1; padding: 2rem; width: 100%; min-width: 0; }
 .menu-shell:not(.with-ads) .menu-main { max-width: 1100px; margin: 0 auto; }
-.menu-shell.with-ads .menu-main { max-width: none; margin: 0; padding: 2rem 0.25rem; }
+.menu-shell.with-ads .menu-main {
+  max-width: 1100px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 2rem 0.5rem;
+  justify-self: center;
+}
 
 .hero-menu {
   display: grid;
@@ -436,6 +442,59 @@ select option:checked {
 .join-row { display: flex; gap: 0.5rem; }
 .room-code { color: var(--gold); }
 .online-meta { text-align: center; color: var(--muted); margin-bottom: 0.5rem; font-size: 0.9rem; }
+.room-lobby { text-align: center; justify-items: center; }
+.room-lobby .lede { margin-bottom: 0.5rem; }
+.room-code-block {
+  width: min(100%, 28rem);
+  margin: 1rem auto 1.5rem;
+  padding: 1.25rem 1.5rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(0,0,0,0.35);
+}
+.room-code-label {
+  display: block;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-bottom: 0.6rem;
+}
+.room-code-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.room-code-value {
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 5vw, 2.8rem);
+  letter-spacing: 0.18em;
+  color: var(--gold);
+}
+.room-wait {
+  display: grid;
+  justify-items: center;
+  gap: 0.5rem;
+  margin: 0.5rem 0 1.25rem;
+}
+.room-wait-pulse {
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 50%;
+  background: var(--gold);
+  animation: room-pulse 1.2s ease-in-out infinite;
+}
+.room-wait-text {
+  margin: 0;
+  font-weight: 700;
+  color: var(--ink);
+}
+@keyframes room-pulse {
+  0%, 100% { opacity: 0.35; transform: scale(0.85); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
 .link-back { color: var(--muted); font-size: 0.9rem; }
 
 .board {
@@ -1899,12 +1958,14 @@ img.meta-avatar.avatar-img {
   align-items: start;
 }
 .menu-shell.with-ads .menu-body {
-  grid-template-columns: 160px minmax(0, 1fr) 160px;
+  grid-template-columns: minmax(0, 160px) minmax(0, 1fr) minmax(0, 160px);
+  justify-items: stretch;
+  width: 100%;
 }
 .menu-main { min-width: 0; }
 .ad-rail {
   position: sticky;
-  top: 4.5rem;
+  top: 1rem;
   align-self: start;
 }
 .ad-slot {
@@ -1993,7 +2054,7 @@ img.meta-avatar.avatar-img {
 .rules-layout { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 1.25rem; }
 @media (max-width: 800px) { .rules-layout { grid-template-columns: 1fr; } }
 .rules-toc {
-  position: sticky; top: 4.5rem; align-self: start;
+  position: sticky; top: 1rem; align-self: start;
   border: 1px solid var(--line); border-radius: 6px; padding: 0.75rem;
   background: rgba(0,0,0,0.25); font-size: 0.9rem;
 }
@@ -2003,6 +2064,7 @@ img.meta-avatar.avatar-img {
 .rules-chapters { display: grid; gap: 0.5rem; }
 .rules-chapter {
   border: 1px solid var(--line); border-radius: 6px; background: rgba(0,0,0,0.22); overflow: hidden;
+  scroll-margin-top: 5rem;
 }
 .rules-chapter-head {
   width: 100%; display: flex; justify-content: space-between; align-items: center;

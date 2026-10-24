@@ -1,6 +1,6 @@
 @page "/rules"
-@rendermode InteractiveServer
 @inject LocaleService Loc
+@inject IJSRuntime Js
 @implements IDisposable
 
 <PageTitle>WebGwent — @Loc.T("rules.title")</PageTitle>
@@ -29,7 +29,7 @@
             <ul>
                 @foreach (var ch in VisibleChapters)
                 {
-                    <li><a href="@($"#rule-{ch.Id}")" @onclick="() => Open(ch.Id)" @onclick:preventDefault>@ch.Title</a></li>
+                    <li><a href="@($"#rule-{ch.Id}")" @onclick="() => GoToAsync(ch.Id)" @onclick:preventDefault>@ch.Title</a></li>
                 }
             </ul>
         </nav>
@@ -119,7 +119,23 @@
             _open.Remove(id);
     }
 
-    private void Open(string id) => _open.Add(id);
+    private async Task GoToAsync(string id)
+    {
+        _open.Add(id);
+        await InvokeAsync(StateHasChanged);
+        // Wait a frame so a previously collapsed chapter is in the DOM.
+        await Task.Delay(50);
+        try
+        {
+            await Js.InvokeVoidAsync("webGwent.scrollToId", $"rule-{id}");
+        }
+        catch (JSException)
+        {
+            /* script not ready */
+        }
+        catch (JSDisconnectedException) { }
+    }
+
     private void ExpandAll() { foreach (var c in Catalog) _open.Add(c.Id); }
     private void CollapseAll() => _open.Clear();
 
