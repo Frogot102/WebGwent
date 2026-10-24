@@ -7,6 +7,6 @@
         var target = string.IsNullOrEmpty(returnUrl) || returnUrl.StartsWith("account/", StringComparison.OrdinalIgnoreCase)
             ? "/account/login"
             : $"/account/login?returnUrl={returnUrl}";
-        Nav.NavigateTo(target, forceLoad: true);
+        Nav.NavigateTo(target);
     }
 }

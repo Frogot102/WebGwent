@@ -1,8 +1,15 @@
 @page "/account/logout"
 @attribute [AllowAnonymous]
+@inject AccountAuthService Auth
 @inject NavigationManager Nav
+@using WebGwent.Server.Services
+
+<p class="muted">…</p>
 
 @code {
-    protected override void OnInitialized() =>
-        Nav.NavigateTo("/api/auth/logout", forceLoad: true);
+    protected override async Task OnInitializedAsync()
+    {
+        await Auth.SignOutAsync();
+        Nav.NavigateTo("/account/login");
+    }
 }

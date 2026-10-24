@@ -1,6 +1,6 @@
 using WebGwent.Game.Models;
 
-namespace WebGwent.Server.Accounts;
+namespace WebGwent.Game.Services;
 
 /// <summary>Lightweight side panel identity for the battlefield (player or bot).</summary>
 public sealed class BoardProfile
@@ -12,16 +12,6 @@ public sealed class BoardProfile
     public int? Rating { get; init; }
     public bool IsBot { get; init; }
     public BotDifficulty? BotDifficulty { get; init; }
-
-    public static BoardProfile FromAccount(PlayerAccount account) => new()
-    {
-        AccountId = account.Id,
-        DisplayName = account.DisplayName,
-        AvatarId = account.AvatarId,
-        AvatarVersion = account.AvatarVersion,
-        Rating = account.Rating,
-        IsBot = false
-    };
 
     public static BoardProfile Bot(string name, BotDifficulty? difficulty = null) => new()
     {
@@ -38,12 +28,18 @@ public sealed class BoardProfile
         IsBot = false
     };
 
-    public static BoardProfile FromAccountId(AccountStore store, Guid? accountId, string fallbackName, bool isBot = false)
+    public static BoardProfile Player(
+        Guid accountId,
+        string displayName,
+        string avatarId,
+        long avatarVersion,
+        int? rating) => new()
     {
-        if (isBot)
-            return Bot(fallbackName);
-        if (accountId is Guid id && store.FindById(id) is { } acc)
-            return FromAccount(acc);
-        return Guest(fallbackName);
-    }
+        AccountId = accountId,
+        DisplayName = displayName,
+        AvatarId = avatarId,
+        AvatarVersion = avatarVersion,
+        Rating = rating,
+        IsBot = false
+    };
 }
