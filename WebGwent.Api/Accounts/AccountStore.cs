@@ -2,7 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using WebGwent.Game.Models;
 
-namespace WebGwent.Server.Accounts;
+namespace WebGwent.Api.Accounts;
 
 public sealed class AccountStore
 {
@@ -357,7 +357,7 @@ public sealed class AccountStore
             acc.MatchesVsBot++;
             if (won) acc.WinsVsBot++;
             else if (!draw) acc.LossesVsBot++;
-            // Rating only changes in online PvP â€” bot matches never affect Elo.
+            // Rating only changes in online PvP — bot matches never affect Elo.
             var before = acc.Rating;
 
             _matches.Add(new MatchHistoryEntry

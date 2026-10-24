@@ -1,5 +1,12 @@
 window.webGwent = window.webGwent || {};
 
+window.webGwent.scrollToId = function (id) {
+  const el = document.getElementById(id);
+  if (!el) return false;
+  el.scrollIntoView({ behavior: "smooth", block: "start" });
+  return true;
+};
+
 window.webGwent.rememberHandCard = function (cardId) {
   const el = document.querySelector(`.hand-panel [data-card-id="${cardId}"]`);
   if (!el) {

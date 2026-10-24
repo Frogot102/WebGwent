@@ -1,14 +1,15 @@
 @page "/play"
 @page "/play/{Mode}"
 @layout GameLayout
-@rendermode InteractiveServer
-@inject GameSessionManager Sessions
+@inject WebGwentApiClient Api
 @inject LocaleService Loc
 @inject NavigationManager Nav
 @inject IJSRuntime Js
 @inject AccountAuthService Auth
-@inject AccountStore Accounts
 @implements IDisposable
+@using WebGwent.Game.Models
+@using WebGwent.Game.Services
+@using WebGwent.Server.Services
 
 <PageTitle>WebGwent — @Loc.T("play.bot")</PageTitle>
 
@@ -18,7 +19,7 @@
         <h1>@Loc.T("play.bot")</h1>
         <label>@Loc.T("play.yourDeck")
             <select @bind="_deck0Id">
-                @foreach (var d in AllDecks)
+                @foreach (var d in _decks)
                 {
                     <option value="@d.Id">@DeckLabel(d)</option>
                 }
@@ -26,7 +27,7 @@
         </label>
         <label>@Loc.T("play.botDeck")
             <select @bind="_deck1Id">
-                @foreach (var d in AllDecks)
+                @foreach (var d in _decks)
                 {
                     <option value="@d.Id">@DeckLabel(d)</option>
                 }
@@ -36,8 +37,8 @@
             <select @bind="_difficulty">
                 <option value="@BotDifficulty.Easy">@Loc.T("play.diff.easy")</option>
                 <option value="@BotDifficulty.Medium">@Loc.T("play.diff.medium")</option>
-                <option value="@BotDifficulty.High">@Loc.T("play.diff.high")@(_hasPlus ? "" : $" · {Loc.T("plus.badge")}")</option>
-                <option value="@BotDifficulty.DeathMarch">@Loc.T("play.diff.death")@(_hasPlus ? "" : $" · {Loc.T("plus.badge")}")</option>
+                <option value="@BotDifficulty.High">@Loc.T("play.diff.high")@(_hasPlus ? "" : $" � {Loc.T("plus.badge")}")</option>
+                <option value="@BotDifficulty.DeathMarch">@Loc.T("play.diff.death")@(_hasPlus ? "" : $" � {Loc.T("plus.badge")}")</option>
             </select>
         </label>
         @if (!_hasPlus && BotDifficultyRules.RequiresPlus(_difficulty))
@@ -77,19 +78,16 @@ else
     private Guid _deck1Id;
     private BotDifficulty _difficulty = BotDifficulty.Medium;
     private Guid _matchId;
-    private int _viewer;
     private MatchView? _view;
     private string? _error;
     private bool _botBusy;
     private bool _matchEndSwept;
-    private bool _matchRecorded;
-    private PlayerAccount? _account;
     private bool _hasPlus;
     private BoardProfile? _youProfile;
     private BoardProfile? _oppProfile;
     private CancellationTokenSource? _botCts;
-
-    private IReadOnlyList<SavedDeck> AllDecks => Sessions.Decks.GetAll();
+    private List<DeckDto> _decks = [];
+    private string _youName = "Player";
 
     protected override async Task OnInitializedAsync()
     {
@@ -100,14 +98,16 @@ else
         }
 
         Loc.Changed += OnLang;
-        _account = await Auth.GetCurrentAsync();
-        _hasPlus = _account?.HasPlus == true;
-        var decks = AllDecks;
-        var fav = _account?.FavoriteFaction ?? Faction.NorthernRealms;
-        _deck0Id = decks.FirstOrDefault(d => d.Faction == fav)?.Id
-                   ?? decks.FirstOrDefault(d => d.Faction == Faction.NorthernRealms)?.Id
-                   ?? decks[0].Id;
-        _deck1Id = decks.FirstOrDefault(d => d.Faction == Faction.Nilfgaard)?.Id ?? decks.Last().Id;
+        var account = await Auth.GetCurrentAsync();
+        _hasPlus = account?.HasPlus == true;
+        _youName = account?.DisplayName ?? Loc.T("play.you");
+        _decks = (await Api.GetDecksAsync()).ToList();
+        if (_decks.Count == 0) return;
+        var fav = account?.FavoriteFaction ?? Faction.NorthernRealms;
+        _deck0Id = _decks.FirstOrDefault(d => d.Faction == fav)?.Id
+                   ?? _decks.FirstOrDefault(d => d.Faction == Faction.NorthernRealms)?.Id
+                   ?? _decks[0].Id;
+        _deck1Id = _decks.FirstOrDefault(d => d.Faction == Faction.Nilfgaard)?.Id ?? _decks[^1].Id;
     }
 
     private void OnLang() => InvokeAsync(StateHasChanged);
@@ -118,91 +118,63 @@ else
         _botCts?.Dispose();
     }
 
-    private string DeckLabel(SavedDeck d) =>
+    private string DeckLabel(DeckDto d) =>
         $"{(d.IsPreset ? "★ " : "")}{d.Name} ({Loc.FactionName(d.Faction)})";
 
     private Task PlayAgain() => Start();
 
     private async Task Start()
     {
-        var d0 = Sessions.Decks.Get(_deck0Id) ?? throw new InvalidOperationException("Deck 1 missing");
-        var d1 = Sessions.Decks.Get(_deck1Id) ?? throw new InvalidOperationException("Deck 2 missing");
-        var v0 = Sessions.Decks.Validate(d0);
-        var v1 = Sessions.Decks.Validate(d1);
-        if (!v0.IsValid || !v1.IsValid)
+        _error = null;
+        try
         {
-            _error = string.Join("; ", v0.Errors.Concat(v1.Errors));
-            return;
-        }
+            _botCts?.Cancel();
+            _botCts?.Dispose();
+            _botCts = null;
+            _botBusy = false;
 
-        _hasPlus = _account?.HasPlus == true;
-        if (BotDifficultyRules.RequiresPlus(_difficulty) && !_hasPlus)
+            var board = await Api.CreateBotMatchAsync(
+                _deck0Id, _deck1Id, _difficulty, _youName, Loc.T("play.botName"));
+            ApplyBoard(board);
+            _matchEndSwept = false;
+            await AnimateBotAsync();
+        }
+        catch (InvalidOperationException ex) when (ex.Message == "PlusRequired")
         {
             _error = Loc.T("plus.required");
-            return;
         }
-
-        _botCts?.Cancel();
-        _botCts?.Dispose();
-        _botCts = null;
-        _botBusy = false;
-
-        var youName = _account?.DisplayName ?? Loc.T("play.you");
-        var botName = Loc.T("play.botName");
-        var match = Sessions.CreateLocal(GameMode.VsBot, d0.ToDeckList(), d1.ToDeckList(),
-            youName,
-            botName,
-            _difficulty);
-        _matchId = match.MatchId;
-        _viewer = 0;
-        _matchEndSwept = false;
-        _matchRecorded = false;
-        _error = null;
-        _youProfile = _account is not null ? BoardProfile.FromAccount(_account) : BoardProfile.Guest(youName);
-        _oppProfile = BoardProfile.Bot(botName, _difficulty);
-        Refresh();
-        await AnimateBotAsync();
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
     }
 
-    private void Refresh()
+    private void ApplyBoard(MatchBoardDto board)
     {
-        var match = Sessions.GetLocal(_matchId);
-        if (match is null) return;
-        _viewer = 0;
-        _view = MatchView.From(match, _viewer);
+        _matchId = board.View.MatchId;
+        _view = board.View;
+        _youProfile = board.You;
+        _oppProfile = board.Opponent;
         _error = null;
-        TryRecordMatch(match);
     }
 
-    private void TryRecordMatch(MatchState match)
-    {
-        if (_matchRecorded || match.Phase != MatchPhase.MatchEnd || _account is null)
-            return;
-        Accounts.RecordBotMatch(_account.Id, match, _viewer);
-        _matchRecorded = true;
-        _account = Accounts.FindById(_account.Id);
-    }
-
-    private Task Mulligan(Guid id) => ActAsync((m, e) => e.Mulligan(m, _viewer, id));
-    private Task FinishMulligan() => ActAsync((m, e) => e.FinishMulligan(m, _viewer));
-    private Task Pass() => ActAsync((m, e) => e.Pass(m, _viewer));
-    private Task UseLeader() => ActAsync((m, e) => e.UseLeader(m, _viewer));
-    private Task ChooseStart(int who) => ActAsync((m, e) => e.ChooseWhoStarts(m, _viewer, who));
-
+    private Task Mulligan(Guid id) => ActAsync(() => Api.BotMulliganAsync(_matchId, id));
+    private Task FinishMulligan() => ActAsync(() => Api.BotFinishMulliganAsync(_matchId));
+    private Task Pass() => ActAsync(() => Api.BotPassAsync(_matchId));
+    private Task UseLeader() => ActAsync(() => Api.BotLeaderAsync(_matchId));
+    private Task ChooseStart(int who) => ActAsync(() => Api.BotChooseStartAsync(_matchId, who));
     private Task PlayCard((Guid CardId, CombatRow? Row, Guid? Target) args) =>
-        ActAsync((m, e) => e.PlayCard(m, _viewer, args.CardId, args.Row, args.Target));
-
+        ActAsync(() => Api.BotPlayAsync(_matchId, args.CardId, args.Row, args.Target));
     private Task ResolvePending((Guid? Target, CombatRow? Row) args) =>
-        ActAsync((m, e) => e.ResolvePending(m, _viewer, args.Target, args.Row));
+        ActAsync(() => Api.BotPendingAsync(_matchId, args.Target, args.Row));
 
-    private async Task ActAsync(Action<MatchState, RulesEngine> action)
+    private async Task ActAsync(Func<Task<MatchBoardDto>> action)
     {
         if (_botBusy) return;
         _botBusy = true;
         try
         {
-            Sessions.ActLocal(_matchId, _viewer, action, autoBot: false);
-            Refresh();
+            ApplyBoard(await action());
             await InvokeAsync(StateHasChanged);
             await ResolveBoardClearAsync();
             _botBusy = false;
@@ -226,8 +198,7 @@ else
             await InvokeAsync(StateHasChanged);
             await SweepAsync();
             if (ct.IsCancellationRequested) return;
-            Sessions.ContinueAfterRoundLocal(_matchId, _viewer);
-            Refresh();
+            ApplyBoard(await Api.BotContinueRoundAsync(_matchId));
             await InvokeAsync(StateHasChanged);
         }
         else if (_view?.Phase == MatchPhase.MatchEnd && !_matchEndSwept)
@@ -240,27 +211,14 @@ else
 
     private async Task SweepAsync()
     {
-        try
-        {
-            await Js.InvokeAsync<bool>("webGwent.sweepBoardToDiscard");
-        }
-        catch (JSException)
-        {
-            await Task.Delay(400);
-        }
+        try { await Js.InvokeAsync<bool>("webGwent.sweepBoardToDiscard"); }
+        catch (JSException) { await Task.Delay(400); }
     }
 
-    /// <summary>Pause before the bot's first move after the player acts: longer than the card fly + pop animation.</summary>
     private const int BotResponseDelayMs = 1200;
 
-    private bool BotActsNext()
-    {
-        var match = Sessions.GetLocal(_matchId);
-        if (match is null || match.Phase != MatchPhase.Playing)
-            return false;
-        var actor = match.Pending?.PlayerIndex ?? match.ActivePlayer;
-        return match.Players[actor].IsBot && !match.Players[actor].HasPassed;
-    }
+    private bool BotActsNext() =>
+        _view is { Phase: MatchPhase.Playing } && !_view.IsYourTurn;
 
     private async Task AnimateBotAsync()
     {
@@ -292,15 +250,15 @@ else
                     break;
                 }
 
-                // Let the player's card land (and the new round settle) before the bot answers.
                 if (pauseBeforeBot && BotActsNext())
                     await Task.Delay(BotResponseDelayMs, ct);
                 pauseBeforeBot = false;
 
-                if (!Sessions.StepBotLocal(_matchId))
+                var step = await Api.BotStepAsync(_matchId);
+                if (!step.Stepped)
                     break;
 
-                Refresh();
+                ApplyBoard(step.Board);
                 await InvokeAsync(StateHasChanged);
 
                 if (_view?.Phase == MatchPhase.RoundEnd || _view?.Phase == MatchPhase.MatchEnd)
@@ -316,13 +274,10 @@ else
                 await Task.Delay(delay, ct);
             }
         }
-        catch (TaskCanceledException)
-        {
-            /* disposed / restarted */
-        }
+        catch (TaskCanceledException) { }
         finally
         {
-            Refresh();
+            try { ApplyBoard(await Api.GetBotMatchAsync(_matchId)); } catch { /* ignore */ }
             _botBusy = false;
             await InvokeAsync(StateHasChanged);
         }

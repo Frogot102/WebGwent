@@ -1,8 +1,11 @@
 @page "/decks"
-@rendermode InteractiveServer
-@inject GameSessionManager Sessions
+@inject DeckUiService DeckUi
+@inject WebGwentApiClient Api
 @inject LocaleService Loc
 @implements IDisposable
+@using WebGwent.Game.Models
+@using WebGwent.Game.Services
+@using WebGwent.Server.Services
 
 <PageTitle>WebGwent — @Loc.T("nav.decks")</PageTitle>
 
@@ -15,26 +18,26 @@
         <a class="btn primary" href="/decks/builder">@Loc.T("decks.openBuilder")</a>
     </div>
 
-    <h2 class="section-title">@Loc.T("decks.presets")</h2>
+    <h2 class="section-title">@Loc.T("DeckUi.Presets")</h2>
     <div class="faction-tabs">
-        @foreach (var deck in Sessions.Decks.GetPresets())
+        @foreach (var deck in _presets)
         {
             <button class="btn @(Equals(_selected?.Id, deck.Id) ? "primary" : "ghost")" @onclick="() => Select(deck)">@Loc.FactionName(deck.Faction)</button>
         }
     </div>
 
     <h2 class="section-title">@Loc.T("decks.custom")</h2>
-    @if (!Sessions.Decks.GetCustom().Any())
+    @if (!_custom.Any())
     {
         <p class="muted">@Loc.T("decks.noCustom")</p>
     }
     else
     {
         <div class="faction-tabs">
-            @foreach (var deck in Sessions.Decks.GetCustom())
+            @foreach (var deck in _custom)
             {
                 <button class="btn @(Equals(_selected?.Id, deck.Id) ? "primary" : "ghost")" @onclick="() => Select(deck)">
-                    @deck.Name · @Loc.FactionName(deck.Faction)
+                    @deck.Name — @Loc.FactionName(deck.Faction)
                 </button>
             }
         </div>
@@ -42,7 +45,7 @@
 
     @if (_selected is not null)
     {
-        var result = Sessions.Decks.Validate(_selected);
+        var result = DeckUi.Validate(_selected);
         <div class="deck-detail">
             <div class="decks-header-row">
                 <h2>@_selected.Name</h2>
@@ -55,7 +58,7 @@
                 </div>
             </div>
             <p class="@(result.IsValid ? "ok" : "bad")">@(result.IsValid ? Loc.T("decks.valid") : string.Join("; ", result.Errors))</p>
-            <p>@Loc.T("decks.leader") <strong>@Loc.CardName(Sessions.Catalog.Get(_selected.LeaderId).Name)</strong></p>
+            <p>@Loc.T("decks.leader") <strong>@Loc.CardName(DeckUi.Catalog.Get(_selected.LeaderId).Name)</strong></p>
             <p>@Loc.T("decks.cards", _selected.CardIds.Count)</p>
             <ul class="card-table deck-browse-list">
                 <li class="card-row-item head">
@@ -64,15 +67,15 @@
                     <span class="col-qty">@Loc.T("decks.colQty")</span>
                     <span class="col-abil">@Loc.T("decks.colAbility")</span>
                 </li>
-                @foreach (var group in _selected.CardIds.Select(id => Sessions.Catalog.Get(id)).GroupBy(c => c.Name).OrderBy(g => g.First().Type).ThenBy(g => Loc.CardName(g.Key)))
+                @foreach (var group in _selected.CardIds.Select(id => DeckUi.Catalog.Get(id)).GroupBy(c => c.Name).OrderBy(g => g.First().Type).ThenBy(g => Loc.CardName(g.Key)))
                 {
                     var c = group.First();
                     var abil = Loc.Abilities(c.Abilities);
                     <li class="card-row-item">
-                        <span class="col-str">@(c.Type == CardType.Unit ? c.Strength.ToString() : "—")</span>
+                        <span class="col-str">@(c.Type == CardType.Unit ? c.Strength.ToString() : "?")</span>
                         <span class="col-name" title="@Loc.CardName(c.Name)">@Loc.CardName(c.Name)</span>
-                        <span class="col-qty">×@group.Count()</span>
-                        <span class="col-abil" title="@abil">@(string.IsNullOrEmpty(abil) ? "—" : abil)</span>
+                        <span class="col-qty">?@group.Count()</span>
+                        <span class="col-abil" title="@abil">@(string.IsNullOrEmpty(abil) ? "?" : abil)</span>
                     </li>
                 }
             </ul>
@@ -82,21 +85,27 @@
 
 @code {
     private SavedDeck? _selected;
+    private List<SavedDeck> _presets = [];
+    private List<SavedDeck> _custom = [];
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
-        _selected = Sessions.Decks.GetPresets().FirstOrDefault();
         Loc.Changed += OnLang;
+        _presets = DeckUi.Presets().ToList();
+        var all = await Api.GetDecksAsync();
+        _custom = all.Where(d => !d.IsPreset).Select(DeckUiService.FromDto).ToList();
+        _selected = _presets.FirstOrDefault();
     }
 
     private void OnLang() => InvokeAsync(StateHasChanged);
     public void Dispose() => Loc.Changed -= OnLang;
     private void Select(SavedDeck deck) => _selected = deck;
 
-    private void DeleteSelected()
+    private async Task DeleteSelected()
     {
         if (_selected is null || _selected.IsPreset) return;
-        Sessions.Decks.Delete(_selected.Id);
-        _selected = Sessions.Decks.GetPresets().FirstOrDefault();
+        await Api.DeleteDeckAsync(_selected.Id);
+        _custom.RemoveAll(d => d.Id == _selected.Id);
+        _selected = _presets.FirstOrDefault();
     }
 }

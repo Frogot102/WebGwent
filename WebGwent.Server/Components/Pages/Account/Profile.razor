@@ -1,9 +1,9 @@
 @page "/account/profile"
-@rendermode InteractiveServer
 @inject AccountAuthService Auth
-@inject AccountStore Store
-@inject InviteStore Invites
+@inject WebGwentApiClient Api
 @inject LocaleService Loc
+@using WebGwent.Server.Accounts
+@using WebGwent.Server.Services
 
 <PageTitle>WebGwent — @Loc.T("auth.profile")</PageTitle>
 
@@ -23,7 +23,7 @@ else
             <div class="profile-head">
                 <h1>@_account.DisplayName</h1>
                 <p class="muted">
-                    @($"@{_account.Username}") · @Loc.T("auth.rating") <strong>@_account.Rating</strong>
+                    @($"@{_account.Username}") � @Loc.T("auth.rating") <strong>@_account.Rating</strong>
                     @if (_account.Role == AccountRole.Admin)
                     {
                         <span class="plus-pill">Admin</span>
@@ -41,11 +41,11 @@ else
                         @Loc.FactionName(_account.FavoriteFaction)
                         @if (_favCount > 0)
                         {
-                            <span class="muted"> · @Loc.T("auth.favFactionMatches", _favCount)</span>
+                            <span class="muted"> � @Loc.T("auth.favFactionMatches", _favCount)</span>
                         }
                         else
                         {
-                            <span class="muted"> · @Loc.T("auth.favFactionNone")</span>
+                            <span class="muted"> � @Loc.T("auth.favFactionNone")</span>
                         }
                     </dd>
                 </div>
@@ -66,7 +66,7 @@ else
                     }
                     else
                     {
-                        @Loc.T("plus.activeUntil", _account.PlusUntilUtc?.ToLocalTime().ToString("g") ?? "—")
+                        @Loc.T("plus.activeUntil", _account.PlusUntilUtc?.ToLocalTime().ToString("g") ?? "�")
                     }
                 </p>
             }
@@ -122,7 +122,7 @@ else
                     {
                         <li class="invite-row @(inv.Revoked || inv.UsedCount >= inv.MaxActivations ? "is-used" : "")">
                             <code>@inv.Code</code>
-                            <span>@inv.DurationDays d · @inv.UsedCount/@inv.MaxActivations</span>
+                            <span>@inv.DurationDays d � @inv.UsedCount/@inv.MaxActivations</span>
                             <button class="btn ghost" type="button" disabled="@_busy" @onclick="() => DeleteInvite(inv.Id)">@Loc.T("plus.deleteInvite")</button>
                         </li>
                     }
@@ -164,7 +164,7 @@ else
                                 class="avatar-option avatar-option-custom @(_avatarId == AvatarCatalog.CustomId ? "selected" : "")"
                                 @onclick="() => SelectPreset(AvatarCatalog.CustomId)"
                                 title="@Loc.T("auth.avatarCustom")">
-                            <img src="@AvatarCatalog.ImageUrl(_account.Id, _account.AvatarVersion)" alt="" />
+                            <img src="@($"/api/avatars/{_account.Id}?v={_account.AvatarVersion}")" alt="" />
                         </button>
                     }
                 </div>
@@ -176,7 +176,7 @@ else
             }
             <button class="btn primary" disabled="@_busy" @onclick="Save">@Loc.T("auth.save")</button>
             <a class="btn ghost" href="/account/history">@Loc.T("auth.history")</a>
-            <a class="btn ghost" href="/api/auth/logout">@Loc.T("auth.logout")</a>
+            <a class="btn ghost" href="/account/logout">@Loc.T("auth.logout")</a>
         </section>
     </div>
 }
@@ -190,7 +190,6 @@ else
     private bool _ok;
     private bool _busy;
     private bool _hasCustomFile;
-
     private int _buyMonths = 1;
     private string _inviteCode = "";
     private string? _plusMessage;
@@ -217,10 +216,10 @@ else
         if (_account is null) return;
         _displayName = _account.DisplayName;
         _avatarId = _account.AvatarId;
-        _favCount = Store.FavoriteFactionMatchCount(_account.Id);
-        _hasCustomFile = Store.FindAvatarFile(_account.Id) is not null;
+        _favCount = await Api.FavoriteCountAsync();
+        _hasCustomFile = AvatarCatalog.IsCustom(_account.AvatarId) || _account.AvatarVersion > 0;
         if (_account.Role == AccountRole.Admin)
-            _invites = Invites.List().ToList();
+            _invites = await Api.ListInvitesAsync();
     }
 
     private void SelectPreset(string id)
@@ -229,13 +228,13 @@ else
         _message = null;
     }
 
-    private void BuyPlus()
+    private async Task BuyPlus()
     {
         if (_account is null) return;
         _busy = true;
         try
         {
-            _account = Store.PurchasePlusMonths(_account.Id, _buyMonths);
+            _account = (await Api.BuyPlusAsync(_buyMonths)).ToAccount();
             _plusOk = true;
             _plusMessage = Loc.T("plus.bought");
         }
@@ -247,19 +246,19 @@ else
         finally { _busy = false; }
     }
 
-    private void RedeemInvite()
+    private async Task RedeemInvite()
     {
         if (_account is null) return;
         _busy = true;
         try
         {
-            var days = Invites.Redeem(_inviteCode, _account.Id, _account.Username);
-            _account = Store.GrantPlusDays(_account.Id, days);
+            var (days, acc) = await Api.RedeemInviteAsync(_inviteCode);
+            _account = acc.ToAccount();
             _inviteCode = "";
             _plusOk = true;
             _plusMessage = Loc.T("plus.redeemed", days);
             if (_account.Role == AccountRole.Admin)
-                _invites = Invites.List().ToList();
+                _invites = await Api.ListInvitesAsync();
         }
         catch (InvalidOperationException ex)
         {
@@ -276,15 +275,15 @@ else
         finally { _busy = false; }
     }
 
-    private void CreateInvite()
+    private async Task CreateInvite()
     {
         if (_account is null || _account.Role != AccountRole.Admin) return;
         _busy = true;
         try
         {
-            var inv = Invites.Create(_account.Id, _inviteDays, _inviteMax);
+            var inv = await Api.CreateInviteAsync(_inviteDays, _inviteMax);
             _createdCode = inv.Code;
-            _invites = Invites.List().ToList();
+            _invites = await Api.ListInvitesAsync();
             _plusOk = true;
             _plusMessage = Loc.T("plus.inviteCreated");
         }
@@ -296,11 +295,11 @@ else
         finally { _busy = false; }
     }
 
-    private void DeleteInvite(string id)
+    private async Task DeleteInvite(string id)
     {
         if (_account?.Role != AccountRole.Admin) return;
-        Invites.Delete(id);
-        _invites = Invites.List().ToList();
+        await Api.DeleteInviteAsync(id);
+        _invites = await Api.ListInvitesAsync();
     }
 
     private async Task OnAvatarSelected(InputFileChangeEventArgs e)
@@ -319,42 +318,29 @@ else
             }
 
             await using var stream = file.OpenReadStream(AvatarCatalog.MaxUploadBytes);
-            await using var ms = new MemoryStream();
-            await stream.CopyToAsync(ms);
-            ms.Position = 0;
-
-            _account = Store.SaveCustomAvatar(_account.Id, ms, file.ContentType);
+            _account = (await Api.UploadAvatarAsync(stream, file.Name, file.ContentType)).ToAccount();
             _avatarId = AvatarCatalog.CustomId;
             _hasCustomFile = true;
             _ok = true;
             _message = Loc.T("auth.avatarUploaded");
-        }
-        catch (InvalidOperationException ex) when (ex.Message is "AvatarType" or "AvatarSize")
-        {
-            _ok = false;
-            _message = Loc.T(ex.Message == "AvatarType" ? "auth.err.avatarType" : "auth.err.avatarSize");
         }
         catch
         {
             _ok = false;
             _message = Loc.T("auth.err.avatarUpload");
         }
-        finally
-        {
-            _busy = false;
-        }
+        finally { _busy = false; }
     }
 
-    private void Save()
+    private async Task Save()
     {
         if (_account is null) return;
         try
         {
-            _account = Store.UpdateProfile(_account.Id, _displayName, _avatarId);
+            _account = (await Api.UpdateProfileAsync(_displayName, _avatarId)).ToAccount();
             _displayName = _account.DisplayName;
             _avatarId = _account.AvatarId;
-            _favCount = Store.FavoriteFactionMatchCount(_account.Id);
-            _hasCustomFile = Store.FindAvatarFile(_account.Id) is not null;
+            _favCount = await Api.FavoriteCountAsync();
             _ok = true;
             _message = Loc.T("auth.saved");
         }

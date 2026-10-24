@@ -1,7 +1,6 @@
 @page "/account/history"
-@rendermode InteractiveServer
 @inject AccountAuthService Auth
-@inject AccountStore Store
+@inject WebGwentApiClient Api
 @inject LocaleService Loc
 
 <PageTitle>WebGwent — @Loc.T("auth.history")</PageTitle>
@@ -42,7 +41,7 @@
                     var oppWins = fromYou ? m.OpponentRoundWins : m.PlayerRoundWins;
                     var delta = fromYou ? m.RatingDelta : -m.RatingDelta;
                     var ratingCell = m.Mode == "Bot"
-                        ? "—"
+                        ? "?"
                         : (delta > 0 ? $"+{delta}" : delta == 0 ? "0" : $"{delta}");
                     <tr class="result-@result.ToLowerInvariant()">
                         <td>@m.PlayedAtUtc.ToLocalTime().ToString("g")</td>
@@ -67,7 +66,7 @@
     {
         _account = await Auth.GetCurrentAsync();
         if (_account is not null)
-            _matches = Store.GetMatchesFor(_account.Id).ToList();
+            _matches = (await Api.HistoryAsync());
     }
 
     private static string Flip(string r) => r switch

@@ -1,6 +1,9 @@
+@using WebGwent.Game.Services
+@using WebGwent.Server.Accounts
+
 @if (ResolvedCustom)
 {
-    <img src="@AvatarCatalog.ImageUrl(ResolvedAccountId!.Value, ResolvedVersion)"
+    <img src="@($"/api/avatars/{ResolvedAccountId!.Value}?v={ResolvedVersion}")"
          alt=""
          class="@CssClass avatar-img"
          width="@Size"

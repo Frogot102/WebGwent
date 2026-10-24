@@ -2,7 +2,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace WebGwent.Server.Accounts;
+namespace WebGwent.Api.Accounts;
 
 /// <summary>
 /// Invite codes for WebGwent Plus. Pattern taken from WebOnlineGame (normalize, alphabet without O/0/I/1,

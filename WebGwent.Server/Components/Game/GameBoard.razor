@@ -1,6 +1,7 @@
 @inject LocaleService Loc
 @inject IJSRuntime Js
 @implements IDisposable
+@using WebGwent.Game.Services
 
 @if (View is null)
 {
@@ -61,7 +62,7 @@
     }
 
     <div class="board-main">
-        @if (View.LastRound is not null && View.Phase != MatchPhase.MatchEnd && !_dismissRound)
+        @if (View.Phase == MatchPhase.RoundEnd && View.LastRound is not null && !_dismissRound)
         {
             <div class="round-banner @(View.LastRound.IsDraw ? "draw" : View.LastRound.YouWon ? "win" : "lose")">
                 <strong>@Loc.T("board.roundEnded", View.LastRound.RoundNumber)</strong>
@@ -71,7 +72,6 @@
                     else if (View.LastRound.YouWon) { @Loc.T("board.roundWin") }
                     else { @Loc.T("board.roundLose") }
                 </span>
-                <button type="button" class="btn ghost tiny" @onclick="() => _dismissRound = true">OK</button>
             </div>
         }
 
