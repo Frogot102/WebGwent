@@ -1,62 +1,23 @@
 @page "/online"
+@page "/online/room/{Code}"
 @layout GameLayout
-@rendermode InteractiveServer
 @implements IAsyncDisposable
 @inject NavigationManager Nav
 @inject LocaleService Loc
-@inject GameSessionManager Sessions
+@inject WebGwentApiClient Api
 @inject AccountAuthService Auth
-@using WebGwent.Server.Hubs
+@inject TokenStore Tokens
+@inject IJSRuntime Js
+@using System.Text.Json
+@using System.Text.Json.Serialization
+@using Microsoft.AspNetCore.SignalR.Client
+@using WebGwent.Game.Models
+@using WebGwent.Game.Services
+@using WebGwent.Server.Services
 
 <PageTitle>WebGwent — @Loc.T("online.title")</PageTitle>
 
-@if (_view is null)
-{
-    <div class="setup-panel wide">
-        <h1>@Loc.T("online.title")</h1>
-
-        @if (!_hasPlus)
-        {
-            <div class="plus-lock">
-                <p class="plus-lock-title">🔒 @Loc.T("plus.lockOnline")</p>
-                <p class="muted">@Loc.T("plus.lockOnlineDesc")</p>
-                <a class="btn primary" href="/account/profile">@Loc.T("plus.goProfile")</a>
-                <a class="link-back" href="/home">@Loc.T("online.back")</a>
-            </div>
-        }
-        else
-        {
-            <label>@Loc.T("online.name") <input @bind="_name" maxlength="24" /></label>
-            <label>@Loc.T("play.yourDeck")
-                <select @bind="_deckId">
-                    @foreach (var d in Sessions.Decks.GetAll())
-                    {
-                        <option value="@d.Id">@((d.IsPreset ? "★ " : "") + d.Name + " (" + Loc.FactionName(d.Faction) + ")")</option>
-                    }
-                </select>
-            </label>
-
-            <div class="online-actions">
-                <button class="btn primary" disabled="@(_busy)" @onclick="CreateRoom">@Loc.T("online.create")</button>
-                <div class="join-row">
-                    <input @bind="_joinCode" placeholder="@Loc.T("online.codePlaceholder")" maxlength="5" />
-                    <button class="btn" disabled="@(_busy)" @onclick="JoinRoom">@Loc.T("online.join")</button>
-                </div>
-            </div>
-
-            @if (!string.IsNullOrEmpty(_code))
-            {
-                <p class="room-code">@Loc.T("online.waiting", _code)</p>
-            }
-            @if (!string.IsNullOrEmpty(_error))
-            {
-                <p class="error-banner">@_error</p>
-            }
-            <a class="link-back" href="/home">@Loc.T("online.back")</a>
-        }
-    </div>
-}
-else
+@if (_view is not null)
 {
     <div class="online-meta">@Loc.T("online.meta", _code!, _playerIndex + 1)</div>
     <GameBoard View="_view"
@@ -71,67 +32,278 @@ else
                OnResolvePending="ResolvePending"
                OnChooseStart="ChooseStart" />
 }
+else if (!string.IsNullOrEmpty(_code) && _seated)
+{
+    <div class="setup-panel wide room-lobby">
+        <p class="eyebrow">@Loc.T("online.lobbyEyebrow")</p>
+        <h1>@Loc.T("online.lobbyTitle")</h1>
+        <p class="lede">@Loc.T("online.lobbyLede")</p>
+
+        <div class="room-code-block">
+            <span class="room-code-label">@Loc.T("online.roomCode")</span>
+            <div class="room-code-row">
+                <span class="room-code-value">@_code</span>
+                <button type="button" class="btn ghost" disabled="@_busy" @onclick="CopyCode">@Loc.T("online.copyCode")</button>
+            </div>
+            @if (!string.IsNullOrEmpty(_copiedHint))
+            {
+                <p class="muted tiny">@_copiedHint</p>
+            }
+        </div>
+
+        <div class="room-wait">
+            <div class="room-wait-pulse" aria-hidden="true"></div>
+            <p class="room-wait-text">@Loc.T("online.waitingOpponent")</p>
+            <p class="muted">@Loc.T("online.waitingHint")</p>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <p class="error-banner">@_error</p>
+        }
+
+        <a class="link-back" href="/online" @onclick="LeaveRoom" @onclick:preventDefault>@Loc.T("online.leaveRoom")</a>
+    </div>
+}
+else if (!_hasPlus)
+{
+    <div class="setup-panel wide">
+        <h1>@Loc.T("online.title")</h1>
+        <div class="plus-lock">
+            <p class="plus-lock-title">🔒 @Loc.T("plus.lockOnline")</p>
+            <p class="muted">@Loc.T("plus.lockOnlineDesc")</p>
+            <a class="btn primary" href="/account/profile">@Loc.T("plus.goProfile")</a>
+            <a class="link-back" href="/home">@Loc.T("online.back")</a>
+        </div>
+    </div>
+}
+else
+{
+    <div class="setup-panel wide">
+        <h1>@Loc.T("online.title")</h1>
+        <label>@Loc.T("online.name") <input @bind="_name" maxlength="24" /></label>
+        <label>@Loc.T("play.yourDeck")
+            <select @bind="_deckId">
+                @foreach (var d in _decks)
+                {
+                    <option value="@d.Id">@((d.IsPreset ? "★ " : "") + d.Name + " (" + Loc.FactionName(d.Faction) + ")")</option>
+                }
+            </select>
+        </label>
+
+        <div class="online-actions">
+            <button class="btn primary" disabled="@(_busy || _hub is null)" @onclick="CreateRoom">@Loc.T("online.create")</button>
+            <div class="join-row">
+                <input @bind="_joinCode" placeholder="@Loc.T("online.codePlaceholder")" maxlength="5" />
+                <button class="btn" disabled="@(_busy || _hub is null)" @onclick="JoinRoom">@Loc.T("online.join")</button>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <p class="error-banner">@_error</p>
+        }
+        <a class="link-back" href="/home">@Loc.T("online.back")</a>
+    </div>
+}
 
 @code {
+    private const string SeatKey = "webgwent.online.seat";
+
+    [Parameter] public string? Code { get; set; }
+
     private HubConnection? _hub;
     private string _name = "Geralt";
     private Guid _deckId;
     private string _joinCode = "";
     private string? _code;
-    private int _playerIndex;
+    private int _playerIndex = -1;
+    private bool _seated;
     private MatchView? _view;
     private BoardProfile? _youProfile;
     private BoardProfile? _oppProfile;
     private string? _error;
+    private string? _copiedHint;
     private bool _busy;
-    private PlayerAccount? _account;
     private bool _hasPlus;
+    private long _boardRevision;
+    private List<DeckDto> _decks = [];
 
     private void OnLang() => InvokeAsync(StateHasChanged);
+
+    private void ResetMatchLocalState()
+    {
+        _boardRevision = 0;
+        _view = null;
+        _youProfile = null;
+        _oppProfile = null;
+        _error = null;
+    }
 
     protected override async Task OnInitializedAsync()
     {
         Loc.Changed += OnLang;
-        _account = await Auth.GetCurrentAsync();
-        _hasPlus = _account?.HasPlus == true;
-        if (_account is not null)
-            _name = _account.DisplayName;
+        var account = await Auth.GetCurrentAsync();
+        _hasPlus = account?.HasPlus == true;
+        if (account is not null)
+            _name = account.DisplayName;
 
-        var decks = Sessions.Decks.GetAll();
-        var fav = _account?.FavoriteFaction ?? Faction.NorthernRealms;
-        _deckId = decks.FirstOrDefault(d => d.Faction == fav)?.Id
-                  ?? decks.FirstOrDefault(d => d.Faction == Faction.NorthernRealms)?.Id
-                  ?? decks[0].Id;
+        _decks = (await Api.GetDecksAsync()).ToList();
+        if (_decks.Count > 0)
+        {
+            var fav = account?.FavoriteFaction ?? Faction.NorthernRealms;
+            _deckId = _decks.FirstOrDefault(d => d.Faction == fav)?.Id
+                      ?? _decks.FirstOrDefault(d => d.Faction == Faction.NorthernRealms)?.Id
+                      ?? _decks[0].Id;
+        }
 
         if (!_hasPlus)
             return;
 
+        var hubUrl = Api.BaseAddress + "/hubs/game";
         _hub = new HubConnectionBuilder()
-            .WithUrl(Nav.ToAbsoluteUri("/hubs/game"))
-            .WithAutomaticReconnect()
+            .WithUrl(hubUrl, options =>
+            {
+                options.AccessTokenProvider = async () => await Tokens.GetAsync();
+            })
+            .WithAutomaticReconnect([
+                TimeSpan.Zero,
+                TimeSpan.FromSeconds(1),
+                TimeSpan.FromSeconds(2),
+                TimeSpan.FromSeconds(5),
+                TimeSpan.FromSeconds(10)
+            ])
+            .WithServerTimeout(TimeSpan.FromSeconds(120))
+            .WithKeepAliveInterval(TimeSpan.FromSeconds(15))
+            .AddJsonProtocol(o =>
+            {
+                o.PayloadSerializerOptions.PropertyNameCaseInsensitive = true;
+                o.PayloadSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+            })
             .Build();
 
-        _hub.On<MatchBoardUpdate>("MatchUpdated", update =>
+        _hub.On<MatchBoardDto>("MatchUpdated", update =>
         {
-            _view = update.View;
-            _youProfile = update.You;
-            _oppProfile = update.Opponent;
-            _error = null;
-            InvokeAsync(StateHasChanged);
+            _ = InvokeAsync(() =>
+            {
+                try
+                {
+                    ApplyBoard(update);
+                    StateHasChanged();
+                }
+                catch (ObjectDisposedException) { }
+                catch (JSDisconnectedException) { }
+                return Task.CompletedTask;
+            });
+        });
+        _hub.On<string>("OpponentJoined", code =>
+        {
+            _ = InvokeAsync(() => OnOpponentJoinedAsync(code));
         });
         _hub.On<string>("Error", msg =>
         {
-            _error = MapHubError(msg);
-            InvokeAsync(StateHasChanged);
+            _ = InvokeAsync(() =>
+            {
+                _error = MapHubError(msg);
+                StateHasChanged();
+                return Task.CompletedTask;
+            });
         });
 
         _hub.Reconnected += async _ =>
         {
-            if (!string.IsNullOrEmpty(_code))
-                await _hub.SendAsync("Reconnect", _code, _playerIndex);
+            if (_seated && !string.IsNullOrEmpty(_code))
+                await RefreshBoardAsync();
         };
 
         await _hub.StartAsync();
+
+        if (!string.IsNullOrWhiteSpace(Code))
+        {
+            var routeCode = Code.Trim().ToUpperInvariant();
+            _joinCode = routeCode;
+            if (await TryRestoreSeatAsync(routeCode))
+                await RefreshBoardAsync();
+        }
+    }
+
+    private void ApplyBoard(MatchBoardDto? update)
+    {
+        if (update is null) return;
+        // Ignore stale GetBoard responses that arrive after a newer MatchUpdated.
+        if (update.Revision > 0 && update.Revision < _boardRevision)
+            return;
+        if (update.Revision > 0)
+            _boardRevision = update.Revision;
+        _view = update.View;
+        _youProfile = update.You;
+        _oppProfile = update.Opponent;
+        _error = null;
+    }
+
+    private async Task OnOpponentJoinedAsync(string code)
+    {
+        if (!_seated || string.IsNullOrEmpty(_code))
+            return;
+        if (!string.Equals(code, _code, StringComparison.OrdinalIgnoreCase))
+            return;
+        await RefreshBoardAsync();
+        StateHasChanged();
+    }
+
+    private async Task RefreshBoardAsync()
+    {
+        if (_hub is null || !_seated || string.IsNullOrEmpty(_code) || _playerIndex < 0)
+            return;
+        try
+        {
+            var board = await _hub.InvokeAsync<MatchBoardDto?>("GetBoard", _code, _playerIndex);
+            if (board is not null)
+                ApplyBoard(board);
+        }
+        catch (Exception ex)
+        {
+            _error = MapHubError(ex.Message);
+        }
+    }
+
+    private async Task SaveSeatAsync()
+    {
+        try
+        {
+            await Js.InvokeVoidAsync("sessionStorage.setItem", SeatKey, $"{_code}|{_playerIndex}");
+        }
+        catch { /* ignore */ }
+    }
+
+    private async Task ClearSeatAsync()
+    {
+        try
+        {
+            await Js.InvokeVoidAsync("sessionStorage.removeItem", SeatKey);
+        }
+        catch { /* ignore */ }
+    }
+
+    private async Task<bool> TryRestoreSeatAsync(string routeCode)
+    {
+        try
+        {
+            var raw = await Js.InvokeAsync<string?>("sessionStorage.getItem", SeatKey);
+            if (string.IsNullOrEmpty(raw)) return false;
+            var parts = raw.Split('|');
+            if (parts.Length != 2) return false;
+            if (!string.Equals(parts[0], routeCode, StringComparison.OrdinalIgnoreCase)) return false;
+            if (!int.TryParse(parts[1], out var idx) || idx is not (0 or 1)) return false;
+            _code = routeCode;
+            _playerIndex = idx;
+            _seated = true;
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private string MapHubError(string msg) =>
@@ -139,23 +311,25 @@ else
             ? Loc.T("plus.required")
             : msg;
 
-    private string? AccountIdArg => _account?.Id.ToString();
-
     private async Task CreateRoom()
     {
         if (_hub is null || !_hasPlus) return;
         _busy = true;
+        _error = null;
         try
         {
-            var deck = Sessions.Decks.Get(_deckId);
+            var deck = _decks.FirstOrDefault(d => d.Id == _deckId);
             var result = await _hub.InvokeAsync<RoomCreatedDto>(
                 "CreateRoom",
                 deck?.Faction.ToString() ?? "NorthernRealms",
                 _name,
-                _deckId.ToString(),
-                AccountIdArg);
+                _deckId.ToString());
+            ResetMatchLocalState();
             _code = result.Code;
             _playerIndex = result.PlayerIndex;
+            _seated = true;
+            await SaveSeatAsync();
+            Nav.NavigateTo($"/online/room/{_code}", replace: true);
         }
         catch (Exception ex)
         {
@@ -168,18 +342,23 @@ else
     {
         if (_hub is null || !_hasPlus) return;
         _busy = true;
+        _error = null;
         try
         {
-            var deck = Sessions.Decks.Get(_deckId);
+            var deck = _decks.FirstOrDefault(d => d.Id == _deckId);
             var result = await _hub.InvokeAsync<JoinedRoomDto>(
                 "JoinRoom",
                 _joinCode,
                 deck?.Faction.ToString() ?? "NorthernRealms",
                 _name,
-                _deckId.ToString(),
-                AccountIdArg);
+                _deckId.ToString());
+            ResetMatchLocalState();
             _code = result.Code;
             _playerIndex = result.PlayerIndex;
+            _seated = true;
+            await SaveSeatAsync();
+            await RefreshBoardAsync();
+            Nav.NavigateTo($"/online/room/{_code}", replace: true);
         }
         catch (Exception ex)
         {
@@ -188,24 +367,44 @@ else
         finally { _busy = false; }
     }
 
-    private Task Mulligan(Guid id) =>
-        _hub!.SendAsync("Mulligan", _code, _playerIndex, id);
+    private async Task LeaveRoom()
+    {
+        try
+        {
+            if (_hub is not null && !string.IsNullOrEmpty(_code))
+                await _hub.SendAsync("LeaveRoom", _code);
+        }
+        catch { /* ignore */ }
+        await ClearSeatAsync();
+        ResetMatchLocalState();
+        _code = null;
+        _seated = false;
+        _playerIndex = -1;
+        Nav.NavigateTo("/online");
+    }
 
-    private Task FinishMulligan() =>
-        _hub!.SendAsync("FinishMulligan", _code, _playerIndex);
+    private async Task CopyCode()
+    {
+        if (string.IsNullOrEmpty(_code)) return;
+        try
+        {
+            await Js.InvokeVoidAsync("navigator.clipboard.writeText", _code);
+            _copiedHint = Loc.T("online.copied");
+        }
+        catch
+        {
+            _copiedHint = _code;
+        }
+    }
 
-    private Task Pass() =>
-        _hub!.SendAsync("Pass", _code, _playerIndex);
-
-    private Task UseLeader() =>
-        _hub!.SendAsync("UseLeader", _code, _playerIndex);
-
+    private Task Mulligan(Guid id) => _hub!.SendAsync("Mulligan", _code, _playerIndex, id);
+    private Task FinishMulligan() => _hub!.SendAsync("FinishMulligan", _code, _playerIndex);
+    private Task Pass() => _hub!.SendAsync("Pass", _code, _playerIndex);
+    private Task UseLeader() => _hub!.SendAsync("UseLeader", _code, _playerIndex);
     private Task PlayCard((Guid CardId, CombatRow? Row, Guid? Target) a) =>
         _hub!.SendAsync("PlayCard", _code, _playerIndex, a.CardId, a.Row?.ToString(), a.Target);
-
     private Task ResolvePending((Guid? Target, CombatRow? Row) a) =>
         _hub!.SendAsync("ResolvePending", _code, _playerIndex, a.Target, a.Row?.ToString());
-
     private Task ChooseStart(int who) =>
         _hub!.SendAsync("ChooseWhoStarts", _code, _playerIndex, who);
 
@@ -216,4 +415,6 @@ else
             await _hub.DisposeAsync();
     }
 
+    private sealed record RoomCreatedDto(string Code, int PlayerIndex);
+    private sealed record JoinedRoomDto(string Code, int PlayerIndex, Guid MatchId);
 }

@@ -1,7 +1,8 @@
 @page "/decks/builder"
 @page "/decks/builder/{DeckId:guid}"
-@rendermode InteractiveServer
-@inject GameSessionManager Sessions
+@inject DeckUiService Decks
+@inject WebGwentApiClient Api
+@using WebGwent.Server.Services
 @inject LocaleService Loc
 @inject NavigationManager Nav
 @implements IDisposable
@@ -80,10 +81,10 @@
                 {
                     var c = group.First();
                     <li class="card-row-item">
-                        <span class="col-str">@(c.Type == CardType.Unit ? c.Strength.ToString() : "—")</span>
+                        <span class="col-str">@(c.Type == CardType.Unit ? c.Strength.ToString() : "?")</span>
                         <span class="col-name" title="@Loc.CardName(c.Name)">@Loc.CardName(c.Name)</span>
-                        <span class="col-qty">×@group.Count()</span>
-                        <button type="button" class="btn ghost tiny col-action" @onclick="() => RemoveOne(c.Name)" aria-label="remove">−</button>
+                        <span class="col-qty">?@group.Count()</span>
+                        <button type="button" class="btn ghost tiny col-action" @onclick="() => RemoveOne(c.Name)" aria-label="remove">?</button>
                     </li>
                 }
             </ul>
@@ -98,14 +99,14 @@
             <div class="pool-grid">
                 @foreach (var card in PoolCards)
                 {
-                    var remaining = Sessions.Decks.RemainingCopies(_faction, card.Name, _cardIds);
+                    var remaining = Decks.RemainingCopies(_faction, card.Name, _cardIds);
                     <button type="button"
                             class="pool-card faction-@card.Faction.ToString().ToLowerInvariant() @(card.IsHero ? "hero" : "") @(card.Type == CardType.Special ? "special" : "") @(remaining <= 0 ? "in-deck-full" : "")"
                             disabled="@(remaining <= 0)"
                             @onclick="() => AddCard(card.Name)"
-                            title="@($"{Loc.CardName(card.Name)} — {Loc.Abilities(card.Abilities)}")">
+                            title="@($"{Loc.CardName(card.Name)} ? {Loc.Abilities(card.Abilities)}")">
                         <span class="pool-top">
-                            <span class="strength">@(card.Type == CardType.Unit ? card.Strength.ToString() : "★")</span>
+                            <span class="strength">@(card.Type == CardType.Unit ? card.Strength.ToString() : "?")</span>
                             <span class="pool-left">+@remaining</span>
                         </span>
                         <span class="card-name">@Loc.CardName(card.Name)</span>
@@ -146,14 +147,14 @@
     private BoundSelect<CardDefinition, string>? _leaderSelect;
 
     private IEnumerable<CardDefinition> Leaders =>
-        Sessions.Catalog.All.Values.Where(c => c.Type == CardType.Leader && c.Faction == _faction);
+        Decks.Catalog.All.Values.Where(c => c.Type == CardType.Leader && c.Faction == _faction);
 
     private int _unitCount => CountType(CardType.Unit);
     private int _specialCount => CountType(CardType.Special);
     private bool _canSave => !string.IsNullOrWhiteSpace(_name) && !string.IsNullOrEmpty(_leaderId);
 
     private IEnumerable<IGrouping<string, CardDefinition>> DeckGroups =>
-        _cardIds.Select(id => Sessions.Catalog.Get(id))
+        _cardIds.Select(id => Decks.Catalog.Get(id))
             .GroupBy(c => c.Name)
             .OrderBy(g => g.First().Type)
             .ThenBy(g => Loc.CardName(g.Key));
@@ -162,7 +163,7 @@
     {
         get
         {
-            var q = Sessions.Catalog.All.Values
+            var q = Decks.Catalog.All.Values
                 .Where(c => c.Type is CardType.Unit or CardType.Special)
                 .Where(c => c.Faction == _faction || c.Faction == Faction.Neutral);
 
@@ -181,10 +182,10 @@
         }
     }
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         Loc.Changed += OnLang;
-        if (DeckId is Guid id && Sessions.Decks.Get(id) is { } existing)
+        if (DeckId is Guid id && await ResolveDeckAsync(id) is { } existing)
         {
             _id = existing.IsPreset ? Guid.NewGuid() : existing.Id;
             _name = existing.IsPreset ? existing.Name + " (copy)" : existing.Name;
@@ -197,6 +198,15 @@
             LoadPreset();
         }
         Revalidate();
+    }
+
+    private async Task<SavedDeck?> ResolveDeckAsync(Guid id)
+    {
+        var preset = Decks.Presets().FirstOrDefault(d => d.Id == id);
+        if (preset is not null) return preset;
+        var all = await Api.GetDecksAsync();
+        var dto = all.FirstOrDefault(d => d.Id == id);
+        return dto is null ? null : DeckUiService.FromDto(dto);
     }
 
     private void OnLang() => InvokeAsync(StateHasChanged);
@@ -235,7 +245,7 @@
 
     private void AddCard(string name)
     {
-        var id = Sessions.Decks.NextAvailableCardId(_faction, name, _cardIds);
+        var id = Decks.NextAvailableCardId(_faction, name, _cardIds);
         if (id is null) return;
         _cardIds.Add(id);
         Revalidate();
@@ -243,12 +253,12 @@
 
     private void RemoveOne(string name)
     {
-        var idx = _cardIds.FindLastIndex(id => Sessions.Catalog.Get(id).Name == name);
+        var idx = _cardIds.FindLastIndex(id => Decks.Catalog.Get(id).Name == name);
         if (idx >= 0) _cardIds.RemoveAt(idx);
         Revalidate();
     }
 
-    private void Save()
+    private async Task Save()
     {
         var deck = new SavedDeck
         {
@@ -258,8 +268,9 @@
             LeaderId = _leaderId,
             CardIds = [.. _cardIds]
         };
-        Sessions.Decks.Save(deck);
-        _id = deck.Id;
+        var saved = await Api.SaveDeckAsync(deck);
+        if (saved is not null)
+            _id = saved.Id;
         _message = Loc.T("builder.saved");
         _messageOk = true;
         Revalidate();
@@ -270,9 +281,9 @@
         if (string.IsNullOrEmpty(_leaderId) && Leaders.Any())
             _leaderId = Leaders.First().Id;
 
-        _validation = DeckValidator.Validate(new DeckList(_name, _faction, _leaderId, _cardIds), Sessions.Catalog);
+        _validation = DeckValidator.Validate(new DeckList(_name, _faction, _leaderId, _cardIds), Decks.Catalog);
     }
 
     private int CountType(CardType type) =>
-        _cardIds.Count(id => Sessions.Catalog.Get(id).Type == type);
+        _cardIds.Count(id => Decks.Catalog.Get(id).Type == type);
 }

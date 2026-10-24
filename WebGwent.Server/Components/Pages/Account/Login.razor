@@ -2,10 +2,11 @@
 @page "/"
 @attribute [AllowAnonymous]
 @layout AuthLayout
-@rendermode InteractiveServer
 @inject AccountAuthService Auth
 @inject NavigationManager Nav
 @inject LocaleService Loc
+@using WebGwent.Server.Accounts
+@using WebGwent.Server.Services
 
 <PageTitle>WebGwent — @Loc.T("auth.login")</PageTitle>
 
@@ -16,48 +17,59 @@
         <p class="lede">@Loc.T("auth.gateLede")</p>
     </div>
 
-    @* Classic form POST — works even if the Blazor circuit is not connected. *@
-    <form class="setup-panel wide account-panel" method="post" action="/api/auth/login">
+    <div class="setup-panel wide account-panel">
         <h2>@Loc.T("auth.login")</h2>
         <label>@Loc.T("auth.username")
-            <input name="username" value="@_username" maxlength="24" autocomplete="username" required />
+            <input @bind="_username" maxlength="24" autocomplete="username" />
         </label>
         <label>@Loc.T("auth.password")
-            <input name="password" type="password" maxlength="64" autocomplete="current-password" required />
+            <input @bind="_password" type="password" maxlength="64" autocomplete="current-password" />
         </label>
-        @if (!string.IsNullOrEmpty(ReturnUrl))
-        {
-            <input type="hidden" name="returnUrl" value="@ReturnUrl" />
-        }
         @if (!string.IsNullOrEmpty(_error))
         {
             <div class="error-banner">@_error</div>
         }
-        <button type="submit" class="btn primary">@Loc.T("auth.login")</button>
+        <button type="button" class="btn primary" disabled="@_busy" @onclick="DoLogin">@Loc.T("auth.login")</button>
         <p class="account-switch">@Loc.T("auth.noAccount") <a href="/account/register">@Loc.T("auth.register")</a></p>
         <p class="muted tiny auth-demo-hint">@Loc.T("auth.demoAdmin", BuiltInAdmin.Username, BuiltInAdmin.Password)</p>
-    </form>
+    </div>
 </section>
 
 @code {
     [SupplyParameterFromQuery(Name = "returnUrl")] public string? ReturnUrl { get; set; }
-    [SupplyParameterFromQuery(Name = "error")] public string? ErrorCode { get; set; }
 
     private string _username = "";
+    private string _password = "";
     private string? _error;
+    private bool _busy;
 
     protected override async Task OnInitializedAsync()
     {
         if (await Auth.GetCurrentAsync() is not null)
-        {
-            Nav.NavigateTo("/home", replace: true);
-            return;
-        }
+            Nav.NavigateTo(SafeReturn(ReturnUrl) ?? "/home", replace: true);
+    }
 
-        _error = ErrorCode switch
+    private async Task DoLogin()
+    {
+        _busy = true;
+        _error = null;
+        try
         {
-            "bad" => Loc.T("auth.err.badCredentials"),
-            _ => null
-        };
+            await Auth.SignInWithPasswordAsync(_username, _password);
+            Nav.NavigateTo(SafeReturn(ReturnUrl) ?? "/home");
+        }
+        catch
+        {
+            _error = Loc.T("auth.err.badCredentials");
+        }
+        finally { _busy = false; }
+    }
+
+    private static string? SafeReturn(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        var path = raw.Trim();
+        if (!path.StartsWith('/') || path.StartsWith("//", StringComparison.Ordinal)) return null;
+        return path;
     }
 }
