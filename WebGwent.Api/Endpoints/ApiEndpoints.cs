@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Mvc;
 using WebGwent.Api.Accounts;
 using WebGwent.Api.Services;
+using WebGwent.Game.Catalog;
 using WebGwent.Game.Models;
 using WebGwent.Game.Services;
 
@@ -34,16 +35,26 @@ public static class ApiEndpoints
         app.MapPost("/api/matches/bot/{id:guid}/continue-round", BotContinueRound).AllowAnonymous();
         app.MapPost("/api/matches/bot/{id:guid}/bot-step", BotStep).AllowAnonymous();
 
-        app.MapPost("/api/plus/buy", BuyPlus).RequireAuthorization();
+        // Real card payment is not wired — UI goes to a checkout stub.
+        app.MapPost("/api/plus/buy", () => Results.StatusCode(StatusCodes.Status410Gone)).RequireAuthorization();
         app.MapPost("/api/plus/redeem", RedeemInvite).RequireAuthorization();
         app.MapGet("/api/plus/invites", ListInvites).RequireAuthorization();
         app.MapPost("/api/plus/invites", CreateInvite).RequireAuthorization();
         app.MapDelete("/api/plus/invites/{id}", DeleteInvite).RequireAuthorization();
 
+        app.MapGet("/api/plus/invite-requests/mine", MyInviteRequest).RequireAuthorization();
+        app.MapPost("/api/plus/invite-requests", CreateInviteRequest).RequireAuthorization();
+        app.MapGet("/api/plus/invite-requests", ListInviteRequests).RequireAuthorization();
+        app.MapPost("/api/plus/invite-requests/{id}/approve", ApproveInviteRequest).RequireAuthorization();
+        app.MapPost("/api/plus/invite-requests/{id}/reject", RejectInviteRequest).RequireAuthorization();
+
         app.MapGet("/api/account/history", History).RequireAuthorization();
         app.MapGet("/api/account/favorite-count", FavoriteCount).RequireAuthorization();
         app.MapPut("/api/account/profile", UpdateProfile).RequireAuthorization();
         app.MapPost("/api/account/avatar", UploadAvatar).RequireAuthorization().DisableAntiforgery();
+
+        app.MapGet("/api/catalog/custom", GetCustomContent).AllowAnonymous();
+        app.MapPut("/api/catalog/custom", PutCustomContent).RequireAuthorization();
     }
 
     private static Guid? TryUserId(ClaimsPrincipal user)
@@ -204,10 +215,26 @@ public static class ApiEndpoints
         catch (InvalidOperationException ex) { return Results.BadRequest(new { error = ex.Message }); }
     }
 
-    private static IResult BuyPlus(BuyPlusRequest req, ClaimsPrincipal user, AccountStore store)
+    private static IResult GetCustomContent(CustomContentStore content) =>
+        Results.Ok(content.Snapshot());
+
+    private static IResult PutCustomContent(CustomContentDocument body, ClaimsPrincipal user, AccountStore store, CustomContentStore content)
     {
-        var acc = store.PurchasePlusMonths(RequireUserId(user), req.Months);
-        return Results.Ok(AccountDto.From(acc));
+        var acc = store.FindById(RequireUserId(user));
+        if (acc?.Role != AccountRole.Admin) return Results.Forbid();
+        try
+        {
+            content.ReplaceAll(body);
+            return Results.Ok(content.Snapshot());
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Results.BadRequest(new { error = ex.Message });
+        }
+        catch (Exception)
+        {
+            return Results.BadRequest(new { error = "InvalidContent" });
+        }
     }
 
     private static IResult RedeemInvite(RedeemRequest req, ClaimsPrincipal user, InviteStore invites, AccountStore store)
@@ -253,6 +280,73 @@ public static class ApiEndpoints
         if (acc?.Role != AccountRole.Admin) return Results.Forbid();
         invites.Delete(id);
         return Results.NoContent();
+    }
+
+    private static IResult MyInviteRequest(ClaimsPrincipal user, InviteRequestStore requests) =>
+        Results.Ok(requests.GetLatestFor(RequireUserId(user)));
+
+    private static IResult CreateInviteRequest(ClaimsPrincipal user, AccountStore store, InviteRequestStore requests)
+    {
+        try
+        {
+            var id = RequireUserId(user);
+            var acc = store.FindById(id) ?? throw new InvalidOperationException("NotFound");
+            if (acc.HasPlus)
+                throw new InvalidOperationException("AlreadyPlus");
+            var req = requests.Create(acc.Id, acc.Username, acc.DisplayName, days: 1);
+            return Results.Ok(req);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Results.BadRequest(new { error = ex.Message });
+        }
+    }
+
+    private static IResult ListInviteRequests(ClaimsPrincipal user, AccountStore store, InviteRequestStore requests)
+    {
+        var acc = store.FindById(RequireUserId(user));
+        if (acc?.Role != AccountRole.Admin) return Results.Forbid();
+        return Results.Ok(requests.ListAll());
+    }
+
+    private static IResult ApproveInviteRequest(
+        string id, ClaimsPrincipal user, AccountStore store, InviteStore invites, InviteRequestStore requests)
+    {
+        var admin = store.FindById(RequireUserId(user));
+        if (admin?.Role != AccountRole.Admin) return Results.Forbid();
+        try
+        {
+            var pending = requests.ListAll().FirstOrDefault(r => r.Id == id)
+                          ?? throw new InvalidOperationException("InviteRequestNotFound");
+            if (pending.Status != InviteRequestStatus.Pending)
+                throw new InvalidOperationException("InviteRequestResolved");
+
+            var invite = invites.Create(admin.Id, pending.RequestedDays, maxActivations: 1);
+            var target = store.FindById(pending.AccountId)
+                         ?? throw new InvalidOperationException("NotFound");
+            var days = invites.Redeem(invite.Code, target.Id, target.Username);
+            store.GrantPlusDays(target.Id, days);
+            var resolved = requests.Approve(id, admin.Id, invite.Code);
+            return Results.Ok(resolved);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Results.BadRequest(new { error = ex.Message });
+        }
+    }
+
+    private static IResult RejectInviteRequest(string id, ClaimsPrincipal user, AccountStore store, InviteRequestStore requests)
+    {
+        var admin = store.FindById(RequireUserId(user));
+        if (admin?.Role != AccountRole.Admin) return Results.Forbid();
+        try
+        {
+            return Results.Ok(requests.Reject(id, admin.Id));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Results.BadRequest(new { error = ex.Message });
+        }
     }
 
     private static IResult History(ClaimsPrincipal user, AccountStore store) =>

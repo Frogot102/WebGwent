@@ -2,6 +2,8 @@
 @page "/decks/builder/{DeckId:guid}"
 @inject DeckUiService Decks
 @inject WebGwentApiClient Api
+@inject CustomFactionRegistry Registry
+@using WebGwent.Game.Catalog
 @using WebGwent.Server.Services
 @inject LocaleService Loc
 @inject NavigationManager Nav
@@ -101,12 +103,12 @@
                 {
                     var remaining = Decks.RemainingCopies(_faction, card.Name, _cardIds);
                     <button type="button"
-                            class="pool-card faction-@card.Faction.ToString().ToLowerInvariant() @(card.IsHero ? "hero" : "") @(card.Type == CardType.Special ? "special" : "") @(remaining <= 0 ? "in-deck-full" : "")"
+                            class="pool-card @(PoolCardClass(card)) @(remaining <= 0 ? "in-deck-full" : "")"
                             disabled="@(remaining <= 0)"
                             @onclick="() => AddCard(card.Name)"
-                            title="@($"{Loc.CardName(card.Name)} ? {Loc.Abilities(card.Abilities)}")">
+                            title="@($"{Loc.CardName(card.Name)} — {Loc.Abilities(card.Abilities)}")">
                         <span class="pool-top">
-                            <span class="strength">@(card.Type == CardType.Unit ? card.Strength.ToString() : "?")</span>
+                            <span class="strength">@(card.Type == CardType.Unit ? card.Strength.ToString() : "★")</span>
                             <span class="pool-left">+@remaining</span>
                         </span>
                         <span class="card-name">@Loc.CardName(card.Name)</span>
@@ -127,7 +129,7 @@
 @code {
     [Parameter] public Guid? DeckId { get; set; }
 
-    private static readonly Faction[] Factions =
+    private Faction[] Factions =
     [
         Faction.NorthernRealms, Faction.Nilfgaard, Faction.Scoiatael, Faction.Monsters, Faction.Skellige
     ];
@@ -185,6 +187,14 @@
     protected override async Task OnInitializedAsync()
     {
         Loc.Changed += OnLang;
+        try
+        {
+            var custom = await Api.GetCustomContentAsync();
+            Registry.Apply(custom);
+            Factions = Registry.PlayableFactions().ToArray();
+        }
+        catch { /* keep vanilla factions */ }
+
         if (DeckId is Guid id && await ResolveDeckAsync(id) is { } existing)
         {
             _id = existing.IsPreset ? Guid.NewGuid() : existing.Id;
@@ -212,13 +222,40 @@
     private void OnLang() => InvokeAsync(StateHasChanged);
     public void Dispose() => Loc.Changed -= OnLang;
 
+    private static string PoolCardClass(CardDefinition card)
+    {
+        var parts = new List<string> { "faction-" + card.Faction.ToString().ToLowerInvariant() };
+        if (card.IsHero) parts.Add("hero");
+        if (card.Type == CardType.Special)
+            parts.Add("special");
+        else if (card.Type == CardType.Unit)
+        {
+            parts.Add(card.Row switch
+            {
+                CombatRow.Melee => "row-melee",
+                CombatRow.Ranged => "row-ranged",
+                CombatRow.Siege => "row-siege",
+                _ => "row-melee"
+            });
+        }
+        return string.Join(' ', parts);
+    }
+
     private void LoadPreset()
     {
-        var preset = PresetDecks.ForFaction(_faction);
         _name = Loc.T("builder.copyOf", Loc.FactionName(_faction));
-        _leaderId = preset.LeaderId;
-        _cardIds = [.. preset.CardIds];
         _id = Guid.NewGuid();
+        if (CustomFactionSlots.IsCustom(_faction))
+        {
+            _leaderId = Leaders.FirstOrDefault()?.Id ?? "";
+            _cardIds = [];
+        }
+        else
+        {
+            var preset = PresetDecks.ForFaction(_faction);
+            _leaderId = preset.LeaderId;
+            _cardIds = [.. preset.CardIds];
+        }
         Revalidate();
     }
 

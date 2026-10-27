@@ -7,22 +7,56 @@ namespace WebGwent.Game.Catalog;
 
 public sealed class CardCatalog
 {
-    private readonly Dictionary<string, CardDefinition> _byId;
+    private readonly object _lock = new();
+    private readonly List<CardDefinition> _embedded;
+    private Dictionary<string, CardDefinition> _byId;
 
     public CardCatalog(IEnumerable<CardDefinition> cards)
     {
-        _byId = cards.ToDictionary(c => c.Id, StringComparer.OrdinalIgnoreCase);
+        _embedded = cards.ToList();
+        _byId = _embedded.ToDictionary(c => c.Id, StringComparer.OrdinalIgnoreCase);
     }
 
-    public IReadOnlyDictionary<string, CardDefinition> All => _byId;
+    public IReadOnlyDictionary<string, CardDefinition> All
+    {
+        get { lock (_lock) return _byId; }
+    }
 
-    public CardDefinition Get(string id) =>
-        _byId.TryGetValue(id, out var def)
-            ? def
-            : throw new KeyNotFoundException($"Unknown card '{id}'.");
+    public CardDefinition Get(string id)
+    {
+        lock (_lock)
+        {
+            return _byId.TryGetValue(id, out var def)
+                ? def
+                : throw new KeyNotFoundException($"Unknown card '{id}'.");
+        }
+    }
 
-    public IEnumerable<CardDefinition> ByFaction(Faction faction) =>
-        _byId.Values.Where(c => c.Faction == faction || c.Faction == Faction.Neutral);
+    public bool TryGet(string id, out CardDefinition? def)
+    {
+        lock (_lock)
+            return _byId.TryGetValue(id, out def);
+    }
+
+    public IEnumerable<CardDefinition> ByFaction(Faction faction)
+    {
+        lock (_lock)
+            return _byId.Values.Where(c => c.Faction == faction || c.Faction == Faction.Neutral).ToList();
+    }
+
+    /// <summary>Replace overlay custom cards; embedded TW3 set stays as the base.</summary>
+    public void ApplyCustomOverlay(IEnumerable<CardDefinition> customCards)
+    {
+        lock (_lock)
+        {
+            _byId = _embedded.ToDictionary(c => c.Id, StringComparer.OrdinalIgnoreCase);
+            foreach (var c in customCards)
+            {
+                if (string.IsNullOrWhiteSpace(c.Id)) continue;
+                _byId[c.Id] = c;
+            }
+        }
+    }
 
     public static CardCatalog LoadEmbedded()
     {
@@ -40,6 +74,43 @@ public sealed class CardCatalog
     }
 
     public static CardCatalog CreateDefault() => LoadEmbedded();
+
+    public static CardDefinition ParseCardDto(
+        string id,
+        string name,
+        CardType type,
+        Faction faction,
+        int strength,
+        CombatRow row,
+        IEnumerable<string>? abilities,
+        string? leaderAbility,
+        string? musterGroup,
+        string? description)
+    {
+        var abs = (abilities ?? [])
+            .Select(a => a.Trim())
+            .Where(a => a.Length > 0)
+            .Select(a => Enum.Parse<Ability>(a, ignoreCase: true))
+            .ToList();
+
+        var leader = LeaderAbility.None;
+        if (!string.IsNullOrWhiteSpace(leaderAbility))
+            leader = Enum.Parse<LeaderAbility>(leaderAbility, ignoreCase: true);
+
+        return new CardDefinition
+        {
+            Id = id.Trim(),
+            Name = name.Trim(),
+            Type = type,
+            Faction = faction,
+            Strength = strength,
+            Row = row,
+            Abilities = abs,
+            LeaderAbility = leader,
+            MusterGroup = musterGroup,
+            Description = description ?? ""
+        };
+    }
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {

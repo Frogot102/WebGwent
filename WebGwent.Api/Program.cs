@@ -56,14 +56,22 @@ builder.Services.AddCors(o => o.AddDefaultPolicy(p =>
         .AllowAnyMethod()
         .AllowCredentials()));
 
+builder.Services.AddSingleton(_ => WebGwent.Game.Catalog.CardCatalog.LoadEmbedded());
+builder.Services.AddSingleton(sp =>
+{
+    var env = sp.GetRequiredService<IWebHostEnvironment>();
+    var path = Path.Combine(env.ContentRootPath, "App_Data", "custom-content.json");
+    return new CustomContentStore(sp.GetRequiredService<WebGwent.Game.Catalog.CardCatalog>(), path);
+});
 builder.Services.AddSingleton(sp =>
 {
     var env = sp.GetRequiredService<IWebHostEnvironment>();
     var decksPath = Path.Combine(env.ContentRootPath, "App_Data", "custom-decks.json");
-    return new GameSessionManager(decksPath);
+    return new GameSessionManager(decksPath, sp.GetRequiredService<WebGwent.Game.Catalog.CardCatalog>());
 });
 builder.Services.AddSingleton<AccountStore>();
 builder.Services.AddSingleton<InviteStore>();
+builder.Services.AddSingleton<InviteRequestStore>();
 builder.Services.AddSingleton<JwtTokenService>();
 builder.Services.AddSingleton<BotMatchService>();
 builder.Services.AddHostedService<RoomWatchService>();
@@ -80,8 +88,10 @@ builder.Services.AddSignalR(o =>
 
 var app = builder.Build();
 
+_ = app.Services.GetRequiredService<CustomContentStore>();
 _ = app.Services.GetRequiredService<AccountStore>();
 _ = app.Services.GetRequiredService<InviteStore>();
+_ = app.Services.GetRequiredService<InviteRequestStore>();
 
 app.UseCors();
 app.UseAuthentication();

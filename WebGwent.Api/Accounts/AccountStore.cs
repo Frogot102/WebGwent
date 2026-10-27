@@ -324,8 +324,9 @@ public sealed class AccountStore
     {
         lock (_lock)
         {
+            // One row per match from this player's perspective (online writes two sides).
             return _matches
-                .Where(m => m.PlayerAccountId == accountId || m.OpponentAccountId == accountId)
+                .Where(m => m.PlayerAccountId == accountId)
                 .OrderByDescending(m => m.PlayedAtUtc)
                 .Take(take)
                 .Select(CloneMatch)
@@ -337,6 +338,15 @@ public sealed class AccountStore
     {
         lock (_lock)
             return _matches.Any(m => m.MatchId == matchId);
+    }
+
+    public MatchHistoryEntry? GetMatchForPlayer(Guid matchId, Guid accountId)
+    {
+        lock (_lock)
+        {
+            var m = _matches.FirstOrDefault(x => x.MatchId == matchId && x.PlayerAccountId == accountId);
+            return m is null ? null : CloneMatch(m);
+        }
     }
 
     public void RecordBotMatch(Guid accountId, MatchState match, int viewerIndex)

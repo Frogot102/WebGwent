@@ -7,7 +7,23 @@ public enum Faction
     Nilfgaard,
     Scoiatael,
     Monsters,
-    Skellige
+    Skellige,
+    /// <summary>Admin-defined custom faction slots (names live in custom-content.json).</summary>
+    Custom1,
+    Custom2,
+    Custom3,
+    Custom4,
+    Custom5
+}
+
+public static class CustomFactionSlots
+{
+    public static readonly Faction[] All =
+    [
+        Faction.Custom1, Faction.Custom2, Faction.Custom3, Faction.Custom4, Faction.Custom5
+    ];
+
+    public static bool IsCustom(Faction f) => f is >= Faction.Custom1 and <= Faction.Custom5;
 }
 
 public enum CombatRow

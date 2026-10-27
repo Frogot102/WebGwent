@@ -1,31 +1,44 @@
 @page "/home"
 @inject LocaleService Loc
 @inject AccountAuthService Auth
+@inject SitePresenceService Presence
 @implements IDisposable
 
 <PageTitle>WebGwent</PageTitle>
 
-<section class="hero-menu">
+<section class="hero-menu hero-fullbleed">
+    <div class="hero-stage" aria-hidden="true">
+        <div class="hero-glow hero-glow-a"></div>
+        <div class="hero-glow hero-glow-b"></div>
+        <div class="hero-embers"></div>
+        <div class="hero-vignette"></div>
+    </div>
+
     <div class="hero-copy">
         <p class="eyebrow">@Loc.T("home.eyebrow")</p>
-        <h1>WebGwent</h1>
+        <h1 class="brand-hero">WebGwent</h1>
         <p class="lede">@Loc.T("home.lede")</p>
+        <p class="home-online-count">@Loc.T("home.onlineCount", _onlineCount)</p>
     </div>
 
     <div class="mode-grid">
-        <a class="mode-card" href="/play/bot">
+        <a class="mode-card mode-bot" href="/play/bot">
+            <span class="mode-kicker">01</span>
             <h2>@Loc.T("home.bot.title")</h2>
             <p>@Loc.T("home.bot.desc")</p>
         </a>
-        <a class="mode-card @(_hasPlus ? "" : "mode-card-locked")" href="/online">
+        <a class="mode-card mode-online @(_hasPlus ? "" : "mode-card-locked")" href="/online">
+            <span class="mode-kicker">02</span>
             <h2>@Loc.T("home.online.title") @if (!_hasPlus) { <span class="plus-pill">Plus</span> }</h2>
             <p>@(_hasPlus ? Loc.T("home.online.desc") : Loc.T("home.online.locked"))</p>
         </a>
-        <a class="mode-card" href="/decks">
+        <a class="mode-card mode-decks" href="/decks">
+            <span class="mode-kicker">03</span>
             <h2>@Loc.T("home.decks.title")</h2>
             <p>@Loc.T("home.decks.desc")</p>
         </a>
-        <a class="mode-card" href="/rules">
+        <a class="mode-card mode-rules" href="/rules">
+            <span class="mode-kicker">04</span>
             <h2>@Loc.T("home.rules.title")</h2>
             <p>@Loc.T("home.rules.desc")</p>
         </a>
@@ -34,14 +47,28 @@
 
 @code {
     private bool _hasPlus;
+    private int _onlineCount;
 
     protected override async Task OnInitializedAsync()
     {
         Loc.Changed += OnChanged;
+        Presence.Changed += OnPresence;
+        _onlineCount = Presence.OnlineCount;
         var acc = await Auth.GetCurrentAsync();
         _hasPlus = acc?.HasPlus == true;
     }
 
+    private void OnPresence() => InvokeAsync(() =>
+    {
+        _onlineCount = Presence.OnlineCount;
+        StateHasChanged();
+    });
+
     private void OnChanged() => InvokeAsync(StateHasChanged);
-    public void Dispose() => Loc.Changed -= OnChanged;
+
+    public void Dispose()
+    {
+        Loc.Changed -= OnChanged;
+        Presence.Changed -= OnPresence;
+    }
 }
