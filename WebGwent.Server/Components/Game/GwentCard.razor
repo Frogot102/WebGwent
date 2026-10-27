@@ -7,7 +7,7 @@
 
 <button type="button"
         data-card-id="@Card.InstanceId"
-        class="gwent-card faction-@Card.Faction.ToString().ToLowerInvariant() @(Selected ? "selected" : "") @(JustPlayed ? "just-played" : "") @(Card.IsHero ? "hero" : "") @(Card.Type == CardType.Special ? "special" : "") @(Targetable ? "decoy-target" : "") @(Dimmed ? "dimmed" : "")"
+        class="@CardClasses"
         disabled="@Disabled"
         @onclick="OnClick"
         title="@Tooltip">
@@ -15,7 +15,11 @@
         <span class="strength">@(Card.Type == CardType.Unit ? Card.CurrentStrength.ToString() : "★")</span>
         @if (Card.Type == CardType.Unit)
         {
-            <span class="row-chip">@RowShort(Card.Row)</span>
+            <span class="row-chip row-chip-@Card.Row.ToString().ToLowerInvariant()">@RowShort(Card.Row)</span>
+        }
+        else if (Card.Type == CardType.Special)
+        {
+            <span class="row-chip special-chip">@SpecialShort</span>
         }
     </span>
     <span class="card-name">@Loc.CardName(Card.Name)</span>
@@ -44,6 +48,79 @@
         ? ""
         : $"{Loc.CardName(Card.Name)} ({Loc.FactionName(Card.Faction)}) — {Loc.Abilities(Card.Abilities)}";
 
+    private string CardClasses
+    {
+        get
+        {
+            if (Card is null) return "gwent-card";
+            var parts = new List<string>
+            {
+                "gwent-card",
+                "faction-" + Card.Faction.ToString().ToLowerInvariant()
+            };
+            if (Selected) parts.Add("selected");
+            if (JustPlayed) parts.Add("just-played");
+            if (Card.IsHero) parts.Add("hero");
+            if (Targetable) parts.Add("decoy-target");
+            if (Dimmed) parts.Add("dimmed");
+
+            if (Card.Type == CardType.Unit)
+            {
+                parts.Add("unit");
+                parts.Add(Card.Row switch
+                {
+                    CombatRow.Melee => "row-melee",
+                    CombatRow.Ranged => "row-ranged",
+                    CombatRow.Siege => "row-siege",
+                    CombatRow.None when Card.Abilities.Contains(Ability.Agile) => "row-agile",
+                    _ => "row-melee"
+                });
+            }
+            else if (Card.Type == CardType.Special)
+            {
+                parts.Add("special");
+                parts.Add(SpecialKindClass);
+            }
+            else if (Card.Type == CardType.Leader)
+            {
+                parts.Add("leader");
+            }
+
+            return string.Join(' ', parts);
+        }
+    }
+
+    private string SpecialKindClass
+    {
+        get
+        {
+            if (Card is null) return "special-artifact";
+            if (Card.Abilities.Any(a => a is Ability.WeatherFrost or Ability.WeatherFog
+                    or Ability.WeatherRain or Ability.WeatherClear or Ability.WeatherStorm))
+                return "special-weather";
+            if (Card.Abilities.Contains(Ability.Decoy)) return "special-decoy";
+            if (Card.Abilities.Contains(Ability.CommandersHorn)) return "special-horn";
+            if (Card.Abilities.Any(a => a is Ability.Scorch or Ability.ScorchBattlefield)) return "special-scorch";
+            return "special-artifact";
+        }
+    }
+
+    private string SpecialShort
+    {
+        get
+        {
+            if (Card is null) return "★";
+            if (Card.Abilities.Any(a => a is Ability.WeatherFrost or Ability.WeatherFog
+                    or Ability.WeatherRain or Ability.WeatherClear or Ability.WeatherStorm))
+                return Loc.Language == AppLanguage.Ru ? "Пг" : "Wx";
+            if (Card.Abilities.Contains(Ability.Decoy)) return Loc.Language == AppLanguage.Ru ? "Чч" : "Dc";
+            if (Card.Abilities.Contains(Ability.CommandersHorn)) return Loc.Language == AppLanguage.Ru ? "Рг" : "Hn";
+            if (Card.Abilities.Any(a => a is Ability.Scorch or Ability.ScorchBattlefield))
+                return Loc.Language == AppLanguage.Ru ? "Ис" : "Sc";
+            return "★";
+        }
+    }
+
     private async Task OnClick()
     {
         if (Card is not null && !Disabled)
@@ -55,7 +132,7 @@
         CombatRow.Melee => Loc.Language == AppLanguage.Ru ? "Бл" : "M",
         CombatRow.Ranged => Loc.Language == AppLanguage.Ru ? "Дл" : "R",
         CombatRow.Siege => Loc.Language == AppLanguage.Ru ? "Ос" : "S",
-        _ => ""
+        _ => Loc.Language == AppLanguage.Ru ? "Аг" : "A"
     };
 
     private static string AbilityShort(Ability a) => a switch

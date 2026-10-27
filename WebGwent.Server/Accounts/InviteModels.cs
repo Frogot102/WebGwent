@@ -12,3 +12,23 @@ public sealed class InviteRecord
     public DateTime? ExpiresAtUtc { get; set; }
     public bool Revoked { get; set; }
 }
+
+public enum InviteRequestStatus
+{
+    Pending,
+    Approved,
+    Rejected
+}
+
+public sealed class InviteRequestDto
+{
+    public string Id { get; set; } = "";
+    public Guid AccountId { get; set; }
+    public string Username { get; set; } = "";
+    public string DisplayName { get; set; } = "";
+    public int RequestedDays { get; set; } = 1;
+    public InviteRequestStatus Status { get; set; }
+    public DateTime CreatedAtUtc { get; set; }
+    public DateTime? ResolvedAtUtc { get; set; }
+    public string? GrantedInviteCode { get; set; }
+}

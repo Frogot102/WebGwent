@@ -1,0 +1,225 @@
+@page "/admin/content"
+@inject LocaleService Loc
+@inject WebGwentApiClient Api
+@inject AccountAuthService Auth
+@inject CustomFactionRegistry Registry
+@inject NavigationManager Nav
+@using WebGwent.Game.Catalog
+@using WebGwent.Game.Models
+@using WebGwent.Server.Accounts
+@using WebGwent.Server.Services
+
+<PageTitle>WebGwent — @Loc.T("admin.contentTitle")</PageTitle>
+
+@if (_forbidden)
+{
+    <div class="setup-panel wide">
+        <h1>@Loc.T("admin.contentTitle")</h1>
+        <p class="error-banner">@Loc.T("plus.required")</p>
+        <a class="link-back" href="/account/profile">@Loc.T("admin.back")</a>
+    </div>
+}
+else if (_doc is not null)
+{
+    <div class="setup-panel wide admin-content">
+        <p class="eyebrow">Admin</p>
+        <h1>@Loc.T("admin.contentTitle")</h1>
+        <p class="lede">@Loc.T("admin.contentLede")</p>
+
+        <h2>@Loc.T("admin.factions")</h2>
+        <div class="admin-list">
+            @foreach (var f in _doc.Factions)
+            {
+                <div class="admin-row">
+                    <span class="admin-slot">@f.Slot</span>
+                    <label>@Loc.T("admin.factionName")
+                        <input @bind="f.NameEn" maxlength="40" />
+                    </label>
+                    <label>@Loc.T("admin.factionNameRu")
+                        <input @bind="f.NameRu" maxlength="40" />
+                    </label>
+                    <label>@Loc.T("admin.factionDesc")
+                        <input @bind="f.Description" maxlength="200" />
+                    </label>
+                    <button type="button" class="btn ghost" @onclick="() => RemoveFaction(f)">@Loc.T("admin.delete")</button>
+                </div>
+            }
+        </div>
+        <button type="button" class="btn" disabled="@(_doc.Factions.Count >= 5 || _busy)" @onclick="AddFaction">@Loc.T("admin.addFaction")</button>
+
+        <h2>@Loc.T("admin.cards")</h2>
+        <div class="admin-list">
+            @foreach (var c in _doc.Cards)
+            {
+                <div class="admin-row admin-card-row">
+                    <label>@Loc.T("admin.cardId")
+                        <input @bind="c.Id" maxlength="64" />
+                    </label>
+                    <label>@Loc.T("admin.cardName")
+                        <input @bind="c.Name" maxlength="64" />
+                    </label>
+                    <label>@Loc.T("admin.cardType")
+                        <select @bind="c.Type">
+                            @foreach (CardType t in Enum.GetValues<CardType>())
+                            {
+                                <option value="@t">@t</option>
+                            }
+                        </select>
+                    </label>
+                    <label>@Loc.T("admin.cardFaction")
+                        <select @bind="c.Faction">
+                            <option value="@Faction.Neutral">Neutral</option>
+                            @foreach (var fac in FactionChoices)
+                            {
+                                <option value="@fac">@Loc.FactionName(fac)</option>
+                            }
+                        </select>
+                    </label>
+                    <label>@Loc.T("admin.cardStrength")
+                        <input type="number" @bind="c.Strength" min="0" max="30" />
+                    </label>
+                    <label>@Loc.T("admin.cardRow")
+                        <select @bind="c.Row">
+                            @foreach (CombatRow r in Enum.GetValues<CombatRow>())
+                            {
+                                <option value="@r">@r</option>
+                            }
+                        </select>
+                    </label>
+                    <label>@Loc.T("admin.cardAbilities")
+                        <input value="@AbilityText(c)" maxlength="120" placeholder="Hero, TightBond"
+                               @onchange="e => SetAbilityText(c, e.Value?.ToString())" />
+                    </label>
+                    <label>@Loc.T("admin.cardDesc")
+                        <input @bind="c.Description" maxlength="240" />
+                    </label>
+                    <button type="button" class="btn ghost" @onclick="() => RemoveCard(c)">@Loc.T("admin.delete")</button>
+                </div>
+            }
+        </div>
+        <button type="button" class="btn" disabled="@_busy" @onclick="AddCard">@Loc.T("admin.addCard")</button>
+
+        <div class="admin-actions">
+            <button type="button" class="btn primary" disabled="@_busy" @onclick="Save">@Loc.T("admin.save")</button>
+            <a class="link-back" href="/account/profile">@Loc.T("admin.back")</a>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_message))
+        {
+            <p class="@(_ok ? "ok-banner" : "error-banner")">@_message</p>
+        }
+    </div>
+}
+
+@code {
+    private CustomContentDocument? _doc;
+    private bool _forbidden;
+    private bool _busy;
+    private bool _ok;
+    private string? _message;
+    private readonly Dictionary<CustomCardRecord, string> _abilityText = new();
+
+    private IEnumerable<Faction> FactionChoices =>
+        new[] { Faction.NorthernRealms, Faction.Nilfgaard, Faction.Scoiatael, Faction.Monsters, Faction.Skellige }
+            .Concat(_doc?.Factions.Select(f => f.Slot) ?? []);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var acc = await Auth.GetCurrentAsync();
+        if (acc?.Role != AccountRole.Admin)
+        {
+            _forbidden = true;
+            return;
+        }
+
+        try
+        {
+            _doc = await Api.GetCustomContentAsync();
+            Registry.Apply(_doc);
+            foreach (var c in _doc.Cards)
+                _abilityText[c] = string.Join(", ", c.Abilities);
+        }
+        catch
+        {
+            _doc = new CustomContentDocument();
+        }
+    }
+
+    private string AbilityText(CustomCardRecord c) =>
+        _abilityText.TryGetValue(c, out var t) ? t : string.Join(", ", c.Abilities);
+
+    private void SetAbilityText(CustomCardRecord c, string? value) =>
+        _abilityText[c] = value ?? "";
+
+    private void AddFaction()
+    {
+        if (_doc is null || _doc.Factions.Count >= 5) return;
+        var used = _doc.Factions.Select(f => f.Slot).ToHashSet();
+        var slot = CustomFactionSlots.All.FirstOrDefault(s => !used.Contains(s));
+        if (!CustomFactionSlots.IsCustom(slot))
+        {
+            _ok = false;
+            _message = Loc.T("admin.slotsFull");
+            return;
+        }
+        _doc.Factions.Add(new CustomFactionRecord
+        {
+            Slot = slot,
+            NameEn = "Custom " + ((int)slot - (int)Faction.Custom1 + 1),
+            NameRu = "Своя " + ((int)slot - (int)Faction.Custom1 + 1)
+        });
+    }
+
+    private void RemoveFaction(CustomFactionRecord f) => _doc?.Factions.Remove(f);
+
+    private void AddCard()
+    {
+        if (_doc is null) return;
+        var id = "custom_" + Guid.NewGuid().ToString("N")[..8];
+        var card = new CustomCardRecord
+        {
+            Id = id,
+            Name = "New card",
+            Type = CardType.Unit,
+            Faction = _doc.Factions.FirstOrDefault()?.Slot ?? Faction.NorthernRealms,
+            Strength = 5,
+            Row = CombatRow.Melee,
+            Abilities = []
+        };
+        _doc.Cards.Add(card);
+        _abilityText[card] = "";
+    }
+
+    private void RemoveCard(CustomCardRecord c)
+    {
+        _doc?.Cards.Remove(c);
+        _abilityText.Remove(c);
+    }
+
+    private async Task Save()
+    {
+        if (_doc is null) return;
+        _busy = true;
+        _message = null;
+        try
+        {
+            foreach (var c in _doc.Cards)
+            {
+                var raw = _abilityText.GetValueOrDefault(c) ?? "";
+                c.Abilities = raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+            }
+            _doc = await Api.SaveCustomContentAsync(_doc);
+            Registry.Apply(_doc);
+            foreach (var c in _doc.Cards)
+                _abilityText[c] = string.Join(", ", c.Abilities);
+            _ok = true;
+            _message = Loc.T("admin.saved");
+        }
+        catch
+        {
+            _ok = false;
+            _message = Loc.T("admin.err");
+        }
+        finally { _busy = false; }
+    }
+}
