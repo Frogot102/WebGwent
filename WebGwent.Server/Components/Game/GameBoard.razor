@@ -320,6 +320,16 @@
             <div class="match-modal wide">
                 <h2>@MatchResultLabel</h2>
                 <p class="gems">@Loc.T("board.you") @Gems(View.You.Lives) — @Loc.T("board.opp") @Gems(View.Opponent.Lives)</p>
+                @if (YouRatingChange is { } rc)
+                {
+                    <p class="rating-change @rc.Css">
+                        <span class="rating-change-label">@Loc.T("auth.rating")</span>
+                        <span class="rating-before">@rc.Before</span>
+                        <span class="rating-arrow" aria-hidden="true">→</span>
+                        <span class="rating-after">@rc.After</span>
+                        <span class="rating-delta">@rc.DeltaText</span>
+                    </p>
+                }
                 @if (View.RoundHistory.Count > 0)
                 {
                     <div class="round-history">
@@ -401,6 +411,21 @@
         && View.IsYourTurn
         && View.Phase == MatchPhase.Playing
         && View.Pending is null;
+
+    private RatingChangeView? YouRatingChange
+    {
+        get
+        {
+            if (YouProfile?.RatingBefore is not int before || YouProfile.Rating is not int after)
+                return null;
+            var delta = after - before;
+            var deltaText = delta > 0 ? $"+{delta}" : delta.ToString();
+            var css = delta > 0 ? "up" : delta < 0 ? "down" : "flat";
+            return new RatingChangeView(before, after, deltaText, css);
+        }
+    }
+
+    private readonly record struct RatingChangeView(int Before, int After, string DeltaText, string Css);
 
     protected override void OnInitialized() => Loc.Changed += OnLangChanged;
 

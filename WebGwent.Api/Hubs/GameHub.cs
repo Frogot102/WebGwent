@@ -37,10 +37,18 @@ public sealed class GameHub(GameSessionManager sessions, AccountStore accounts) 
         sessions.RebindConnection(code, playerIndex, Context.ConnectionId);
     }
 
-    public override Task OnDisconnectedAsync(Exception? exception)
+    public override async Task OnDisconnectedAsync(Exception? exception)
     {
-        sessions.ClearConnection(Context.ConnectionId);
-        return base.OnDisconnectedAsync(exception);
+        var cleared = sessions.ClearConnection(Context.ConnectionId);
+        foreach (var (code, playerIndex) in cleared)
+        {
+            try
+            {
+                await Clients.Group(code).SendAsync("SeatStatus", new SeatStatusDto(code, playerIndex, Online: false));
+            }
+            catch { /* ignore */ }
+        }
+        await base.OnDisconnectedAsync(exception);
     }
 
     public async Task<RoomCreatedDto> CreateRoom(string faction, string playerName, string? deckId = null)
@@ -62,7 +70,7 @@ public sealed class GameHub(GameSessionManager sessions, AccountStore accounts) 
         var room = sessions.JoinRoom(code.Trim().ToUpperInvariant(), deck.Faction, Context.ConnectionId,
             string.IsNullOrWhiteSpace(playerName) ? "Guest" : playerName, deck, accountId);
         await Groups.AddToGroupAsync(Context.ConnectionId, room.Code);
-
+        await Clients.Group(room.Code).SendAsync("SeatStatus", new SeatStatusDto(room.Code, 1, Online: true));
         await Clients.Group(room.Code).SendAsync("OpponentJoined", room.Code);
         await BroadcastBoard(room);
         return new JoinedRoomDto(room.Code, 1, room.Match.MatchId);
@@ -88,6 +96,7 @@ public sealed class GameHub(GameSessionManager sessions, AccountStore accounts) 
 
         sessions.RebindConnection(code, playerIndex, Context.ConnectionId);
         await Groups.AddToGroupAsync(Context.ConnectionId, code);
+        await Clients.Group(code).SendAsync("SeatStatus", new SeatStatusDto(code, playerIndex, Online: true));
 
         if (!room.GuestJoined)
             return null;
@@ -124,8 +133,17 @@ public sealed class GameHub(GameSessionManager sessions, AccountStore accounts) 
 
         sessions.RebindConnection(code, playerIndex, Context.ConnectionId);
         await Groups.AddToGroupAsync(Context.ConnectionId, code);
+        await Clients.Group(code).SendAsync("SeatStatus", new SeatStatusDto(code, playerIndex, Online: true));
         if (room.GuestJoined)
             await Clients.Caller.SendAsync("MatchUpdated", BuildUpdate(room, playerIndex));
+    }
+
+    public Task<SeatPresenceDto> GetSeatPresence(string code)
+    {
+        code = code.Trim().ToUpperInvariant();
+        _ = RequireUserId();
+        var (host, guest) = sessions.GetSeatOnline(code);
+        return Task.FromResult(new SeatPresenceDto(code, host, guest));
     }
 
     public Task PlayCard(string code, int playerIndex, Guid cardId, string? row, Guid? targetId)
@@ -211,8 +229,13 @@ public sealed class GameHub(GameSessionManager sessions, AccountStore accounts) 
 
     private MatchBoardUpdate BuildUpdate(GameRoom room, int viewerIndex)
     {
-        var host = BoardProfileFactory.FromAccountId(accounts, room.HostAccountId, room.Match.Players[0].Name);
-        var guest = BoardProfileFactory.FromAccountId(accounts, room.GuestAccountId, room.Match.Players[1].Name);
+        var matchId = room.Match.MatchId;
+        var host = room.Match.Phase == MatchPhase.MatchEnd
+            ? BoardProfileFactory.FromAccountIdForMatch(accounts, room.HostAccountId, room.Match.Players[0].Name, matchId)
+            : BoardProfileFactory.FromAccountId(accounts, room.HostAccountId, room.Match.Players[0].Name);
+        var guest = room.Match.Phase == MatchPhase.MatchEnd
+            ? BoardProfileFactory.FromAccountIdForMatch(accounts, room.GuestAccountId, room.Match.Players[1].Name, matchId)
+            : BoardProfileFactory.FromAccountId(accounts, room.GuestAccountId, room.Match.Players[1].Name);
         var you = viewerIndex == 0 ? host : guest;
         var opp = viewerIndex == 0 ? guest : host;
         return new MatchBoardUpdate(MatchView.From(room.Match, viewerIndex), you, opp, room.StateRevision);
@@ -222,3 +245,5 @@ public sealed class GameHub(GameSessionManager sessions, AccountStore accounts) 
 public record RoomCreatedDto(string Code, int PlayerIndex);
 public record JoinedRoomDto(string Code, int PlayerIndex, Guid MatchId);
 public record MatchBoardUpdate(MatchView View, BoardProfile You, BoardProfile Opponent, long Revision = 0);
+public record SeatStatusDto(string Code, int PlayerIndex, bool Online);
+public record SeatPresenceDto(string Code, bool HostOnline, bool GuestOnline);

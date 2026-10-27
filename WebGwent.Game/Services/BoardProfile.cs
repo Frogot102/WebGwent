@@ -10,6 +10,8 @@ public sealed class BoardProfile
     public string AvatarId { get; init; } = "wolf";
     public long AvatarVersion { get; init; }
     public int? Rating { get; init; }
+    /// <summary>Rating at match start (online). With <see cref="Rating"/> shows 1000 → 987 on match end.</summary>
+    public int? RatingBefore { get; init; }
     public bool IsBot { get; init; }
     public BotDifficulty? BotDifficulty { get; init; }
 
@@ -33,13 +35,15 @@ public sealed class BoardProfile
         string displayName,
         string avatarId,
         long avatarVersion,
-        int? rating) => new()
+        int? rating,
+        int? ratingBefore = null) => new()
     {
         AccountId = accountId,
         DisplayName = displayName,
         AvatarId = avatarId,
         AvatarVersion = avatarVersion,
         Rating = rating,
+        RatingBefore = ratingBefore,
         IsBot = false
     };
 }

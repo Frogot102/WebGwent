@@ -34,6 +34,10 @@ public sealed class MatchView
     public bool IsYourTurn { get; init; }
     public bool IsDraw => Phase == MatchPhase.MatchEnd && Winner is null;
     public bool LastActionByOpponent => LastActionPlayer is int a && a != ViewerIndex;
+    /// <summary>UTC of last match action — used for turn timer in online play.</summary>
+    public DateTime LastActionUtc { get; init; }
+    /// <summary>AFK auto-pass window in seconds (online).</summary>
+    public int TurnTimeoutSeconds { get; init; }
 
     public static MatchView From(MatchState match, int viewerIndex)
     {
@@ -87,6 +91,8 @@ public sealed class MatchView
             IsYourTurn = match.Phase == MatchPhase.Playing && match.ActivePlayer == viewerIndex && match.Pending is null
                          || match.Pending?.PlayerIndex == viewerIndex
                          || match.Phase == MatchPhase.Mulligan,
+            LastActionUtc = match.LastActionUtc,
+            TurnTimeoutSeconds = (int)GameSessionManager.TurnTimeout.TotalSeconds,
             You = PlayerView.From(you, match, hideHand: false),
             Opponent = PlayerView.From(opp, match, hideHand: true)
         };

@@ -17,19 +17,24 @@ if errorlevel 1 (
   exit /b 1
 )
 
-echo Starting WebGwent.Api on http://localhost:5180 ...
-start "WebGwent.Api" cmd /k "dotnet run --project WebGwent.Api --no-build --urls http://localhost:5180"
+echo Starting WebGwent.Api on http://127.0.0.1:5180 (local only)...
+start "WebGwent.Api" cmd /k "dotnet run --project WebGwent.Api --no-build --urls http://127.0.0.1:5180"
 
 timeout /t 2 /nobreak >nul
 
-echo Starting WebGwent.Server on http://localhost:5097 ...
-start "WebGwent.Server" cmd /k "dotnet run --project WebGwent.Server --no-build --urls http://localhost:5097"
+echo Starting WebGwent.Server on http://0.0.0.0:5097 (LAN / Radmin / ngrok)...
+start "WebGwent.Server" cmd /k "dotnet run --project WebGwent.Server --no-build --urls http://0.0.0.0:5097"
 
 timeout /t 3 /nobreak >nul
 start "" "http://localhost:5097"
 
 echo.
-echo Api:    http://localhost:5180
-echo Client: http://localhost:5097
-echo Close the two console windows to stop.
+echo ============================================================
+echo  Local:   http://localhost:5097
+echo  LAN:     http://YOUR_PC_IP:5097   (Radmin VPN IP works too)
+echo  Public:  ngrok http 5097
+echo ============================================================
+echo  Friend opens ONLY the Server URL above — API stays on this PC.
+echo  Close the two console windows to stop.
+echo.
 endlocal
