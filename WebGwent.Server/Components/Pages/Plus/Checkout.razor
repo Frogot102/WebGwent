@@ -1,0 +1,143 @@
+@page "/plus/checkout"
+@inject LocaleService Loc
+@inject WebGwentApiClient Api
+@inject AccountAuthService Auth
+@inject NavigationManager Nav
+@using WebGwent.Server.Accounts
+@using WebGwent.Server.Services
+
+<PageTitle>WebGwent — @Loc.T("plus.checkoutTitle")</PageTitle>
+
+@if (_account is null)
+{
+    <div class="setup-panel wide">
+        <h1>@Loc.T("plus.checkoutTitle")</h1>
+        <p class="muted">@Loc.T("auth.needLogin")</p>
+        <a class="btn primary" href="/account/login">@Loc.T("auth.login")</a>
+    </div>
+}
+else if (_account.HasPlus)
+{
+    <div class="setup-panel wide checkout-stub">
+        <p class="eyebrow">WebGwent Plus</p>
+        <h1>@Loc.T("plus.checkoutTitle")</h1>
+        <p class="ok-banner">@Loc.T("plus.alreadyActive")</p>
+        <a class="btn primary" href="/account/profile">@Loc.T("plus.goProfile")</a>
+    </div>
+}
+else
+{
+    <div class="setup-panel wide checkout-stub">
+        <p class="eyebrow">@Loc.T("plus.checkoutEyebrow")</p>
+        <h1>@Loc.T("plus.checkoutTitle")</h1>
+        <p class="lede">@Loc.T("plus.checkoutUnavailable")</p>
+        <p class="muted">@Loc.T("plus.checkoutAskAdmin")</p>
+
+        <div class="checkout-block">
+            <label>@Loc.T("plus.inviteCode")
+                <input @bind="_inviteCode" maxlength="32" placeholder="WGNT-XXXX-XXXX" />
+            </label>
+            <button class="btn primary" disabled="@_busy" @onclick="Redeem">@Loc.T("plus.activate")</button>
+        </div>
+
+        <div class="checkout-block">
+            @if (_myRequest?.Status == InviteRequestStatus.Pending)
+            {
+                <p class="ok-banner">@Loc.T("plus.requestPending")</p>
+            }
+            else if (_myRequest?.Status == InviteRequestStatus.Approved)
+            {
+                <p class="ok-banner">@Loc.T("plus.requestApproved")</p>
+            }
+            else if (_myRequest?.Status == InviteRequestStatus.Rejected)
+            {
+                <p class="error-banner">@Loc.T("plus.requestRejected")</p>
+                <button class="btn" disabled="@_busy" @onclick="RequestInvite">@Loc.T("plus.requestInvite")</button>
+            }
+            else
+            {
+                <button class="btn" disabled="@_busy" @onclick="RequestInvite">@Loc.T("plus.requestInvite")</button>
+                <p class="muted tiny">@Loc.T("plus.requestHint")</p>
+            }
+        </div>
+
+        @if (!string.IsNullOrEmpty(_message))
+        {
+            <p class="@(_ok ? "ok-banner" : "error-banner")">@_message</p>
+        }
+
+        <a class="link-back" href="/account/profile">@Loc.T("plus.goProfile")</a>
+    </div>
+}
+
+@code {
+    private PlayerAccount? _account;
+    private string _inviteCode = "";
+    private InviteRequestDto? _myRequest;
+    private bool _busy;
+    private bool _ok;
+    private string? _message;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _account = await Auth.GetCurrentAsync();
+        if (_account is null) return;
+        try { _myRequest = await Api.GetMyInviteRequestAsync(); }
+        catch { _myRequest = null; }
+    }
+
+    private async Task Redeem()
+    {
+        _busy = true;
+        _message = null;
+        try
+        {
+            var (days, acc) = await Api.RedeemInviteAsync(_inviteCode);
+            _account = acc.ToAccount();
+            _inviteCode = "";
+            _ok = true;
+            _message = Loc.T("plus.redeemed", days);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _ok = false;
+            _message = Loc.T(ex.Message switch
+            {
+                "InviteInvalid" => "plus.err.invalid",
+                "InviteExhausted" => "plus.err.exhausted",
+                "InviteExpired" => "plus.err.expired",
+                "InviteAlreadyUsed" => "plus.err.alreadyUsed",
+                _ => "plus.err.redeem"
+            });
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task RequestInvite()
+    {
+        _busy = true;
+        _message = null;
+        try
+        {
+            _myRequest = await Api.RequestInviteAsync();
+            _ok = true;
+            _message = Loc.T("plus.requestSent");
+        }
+        catch (InvalidOperationException ex)
+        {
+            _ok = false;
+            _message = Loc.T(ex.Message switch
+            {
+                "InviteRequestPending" => "plus.err.requestPending",
+                "AlreadyPlus" => "plus.alreadyActive",
+                _ => "plus.err.request"
+            });
+        }
+        catch
+        {
+            _ok = false;
+            _message = Loc.T("plus.err.request");
+        }
+        finally { _busy = false; }
+    }
+}

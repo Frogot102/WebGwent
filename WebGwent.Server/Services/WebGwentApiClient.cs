@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using WebGwent.Game.Catalog;
 using WebGwent.Game.Models;
 using WebGwent.Game.Services;
 using WebGwent.Server.Accounts;
@@ -140,12 +141,22 @@ public sealed class WebGwentApiClient(HttpClient http, TokenStore tokens)
         return (await res.Content.ReadFromJsonAsync<BotStepResult>(Json))!;
     }
 
-    public async Task<AccountDto> BuyPlusAsync(int months)
+    public async Task<CustomContentDocument> GetCustomContentAsync()
+    {
+        return await http.GetFromJsonAsync<CustomContentDocument>("/api/catalog/custom", Json)
+               ?? new CustomContentDocument();
+    }
+
+    public async Task<CustomContentDocument> SaveCustomContentAsync(CustomContentDocument doc)
     {
         await ApplyAuthAsync();
-        var res = await http.PostAsJsonAsync("/api/plus/buy", new { months });
-        res.EnsureSuccessStatusCode();
-        return (await res.Content.ReadFromJsonAsync<AccountDto>(Json))!;
+        var res = await http.PutAsJsonAsync("/api/catalog/custom", doc);
+        if (!res.IsSuccessStatusCode)
+        {
+            var err = await res.Content.ReadFromJsonAsync<ErrorBody>(Json);
+            throw new InvalidOperationException(err?.Error ?? "InvalidContent");
+        }
+        return (await res.Content.ReadFromJsonAsync<CustomContentDocument>(Json))!;
     }
 
     public async Task<(int Days, AccountDto Account)> RedeemInviteAsync(string code)
@@ -183,6 +194,59 @@ public sealed class WebGwentApiClient(HttpClient http, TokenStore tokens)
     {
         await ApplyAuthAsync();
         (await http.DeleteAsync($"/api/plus/invites/{id}")).EnsureSuccessStatusCode();
+    }
+
+    public async Task<InviteRequestDto?> GetMyInviteRequestAsync()
+    {
+        await ApplyAuthAsync();
+        var res = await http.GetAsync("/api/plus/invite-requests/mine");
+        res.EnsureSuccessStatusCode();
+        var text = await res.Content.ReadAsStringAsync();
+        if (string.IsNullOrWhiteSpace(text) || text == "null")
+            return null;
+        return JsonSerializer.Deserialize<InviteRequestDto>(text, Json);
+    }
+
+    public async Task<InviteRequestDto> RequestInviteAsync()
+    {
+        await ApplyAuthAsync();
+        var res = await http.PostAsJsonAsync("/api/plus/invite-requests", new { });
+        if (!res.IsSuccessStatusCode)
+        {
+            var err = await res.Content.ReadFromJsonAsync<ErrorBody>(Json);
+            throw new InvalidOperationException(err?.Error ?? "InviteRequestFailed");
+        }
+        return (await res.Content.ReadFromJsonAsync<InviteRequestDto>(Json))!;
+    }
+
+    public async Task<List<InviteRequestDto>> ListInviteRequestsAsync()
+    {
+        await ApplyAuthAsync();
+        return await http.GetFromJsonAsync<List<InviteRequestDto>>("/api/plus/invite-requests", Json) ?? [];
+    }
+
+    public async Task<InviteRequestDto> ApproveInviteRequestAsync(string id)
+    {
+        await ApplyAuthAsync();
+        var res = await http.PostAsJsonAsync($"/api/plus/invite-requests/{id}/approve", new { });
+        if (!res.IsSuccessStatusCode)
+        {
+            var err = await res.Content.ReadFromJsonAsync<ErrorBody>(Json);
+            throw new InvalidOperationException(err?.Error ?? "InviteRequestFailed");
+        }
+        return (await res.Content.ReadFromJsonAsync<InviteRequestDto>(Json))!;
+    }
+
+    public async Task<InviteRequestDto> RejectInviteRequestAsync(string id)
+    {
+        await ApplyAuthAsync();
+        var res = await http.PostAsJsonAsync($"/api/plus/invite-requests/{id}/reject", new { });
+        if (!res.IsSuccessStatusCode)
+        {
+            var err = await res.Content.ReadFromJsonAsync<ErrorBody>(Json);
+            throw new InvalidOperationException(err?.Error ?? "InviteRequestFailed");
+        }
+        return (await res.Content.ReadFromJsonAsync<InviteRequestDto>(Json))!;
     }
 
     public async Task<List<MatchHistoryEntry>> HistoryAsync()

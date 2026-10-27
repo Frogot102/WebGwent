@@ -17,13 +17,37 @@
 
 <PageTitle>WebGwent — @Loc.T("online.title")</PageTitle>
 
+@* Banner only after we actually try SignalR — avoids false "lost" flash before connect / without Plus *@
+@if (_hubStarted)
+{
+    <div class="conn-banner @ConnBannerClass" role="status">
+        <span>@ConnBannerText</span>
+        @if (_hub is not null && _hub.State != HubConnectionState.Connected)
+        {
+            <button type="button" class="btn ghost tiny-btn" disabled="@_busy" @onclick="ManualReconnect">@Loc.T("online.reconnect")</button>
+        }
+    </div>
+}
+
 @if (_view is not null)
 {
-    <div class="online-meta">@Loc.T("online.meta", _code!, _playerIndex + 1)</div>
+    <div class="online-meta">
+        <span>@Loc.T("online.meta", _code!, _playerIndex + 1)</span>
+        <span class="online-meta-sep">·</span>
+        <span class="@(_opponentOnline ? "seat-online" : "seat-offline")">
+            @(_opponentOnline ? Loc.T("online.opponentOnline") : Loc.T("online.opponentOffline"))
+        </span>
+        @if (_view.IsYourTurn && _view.Phase == MatchPhase.Playing && TurnSecondsLeft is int left)
+        {
+            <span class="online-meta-sep">·</span>
+            <span class="turn-timer @(left <= 30 ? "turn-timer-warn" : "")">@Loc.T("online.turnTimer", left)</span>
+        }
+    </div>
     <GameBoard View="_view"
                YouProfile="_youProfile"
                OppProfile="_oppProfile"
                Error="@_error"
+               InputLocked="@InputLocked"
                OnMulligan="Mulligan"
                OnFinishMulligan="FinishMulligan"
                OnPlay="PlayCard"
@@ -45,6 +69,10 @@ else if (!string.IsNullOrEmpty(_code) && _seated)
                 <span class="room-code-value">@_code</span>
                 <button type="button" class="btn ghost" disabled="@_busy" @onclick="CopyCode">@Loc.T("online.copyCode")</button>
             </div>
+            <div class="room-link-row">
+                <input class="room-link-input" readonly value="@RoomLink" />
+                <button type="button" class="btn ghost" disabled="@_busy" @onclick="CopyLink">@Loc.T("online.copyLink")</button>
+            </div>
             @if (!string.IsNullOrEmpty(_copiedHint))
             {
                 <p class="muted tiny">@_copiedHint</p>
@@ -55,6 +83,9 @@ else if (!string.IsNullOrEmpty(_code) && _seated)
             <div class="room-wait-pulse" aria-hidden="true"></div>
             <p class="room-wait-text">@Loc.T("online.waitingOpponent")</p>
             <p class="muted">@Loc.T("online.waitingHint")</p>
+            <p class="@(_opponentOnline ? "seat-online" : "seat-offline")">
+                @(_opponentOnline ? Loc.T("online.opponentOnline") : Loc.T("online.opponentOffline"))
+            </p>
         </div>
 
         @if (!string.IsNullOrEmpty(_error))
@@ -92,10 +123,10 @@ else
         </label>
 
         <div class="online-actions">
-            <button class="btn primary" disabled="@(_busy || _hub is null)" @onclick="CreateRoom">@Loc.T("online.create")</button>
+            <button class="btn primary" disabled="@(_busy || _hub is null || _hub.State != HubConnectionState.Connected)" @onclick="CreateRoom">@Loc.T("online.create")</button>
             <div class="join-row">
                 <input @bind="_joinCode" placeholder="@Loc.T("online.codePlaceholder")" maxlength="5" />
-                <button class="btn" disabled="@(_busy || _hub is null)" @onclick="JoinRoom">@Loc.T("online.join")</button>
+                <button class="btn" disabled="@(_busy || _hub is null || _hub.State != HubConnectionState.Connected)" @onclick="JoinRoom">@Loc.T("online.join")</button>
             </div>
         </div>
 
@@ -126,8 +157,36 @@ else
     private string? _copiedHint;
     private bool _busy;
     private bool _hasPlus;
+    private bool _hubStarted;
     private long _boardRevision;
+    private bool _opponentOnline;
+    private HubConnectionState _connState = HubConnectionState.Connecting;
+    private CancellationTokenSource? _timerCts;
+    private int? _turnSecondsLeft;
     private List<DeckDto> _decks = [];
+
+    private bool InputLocked =>
+        _hub is null || _hub.State != HubConnectionState.Connected;
+
+    private int? TurnSecondsLeft => _turnSecondsLeft;
+
+    private string RoomLink =>
+        string.IsNullOrEmpty(_code) ? "" : Nav.ToAbsoluteUri($"/online/room/{_code}").ToString();
+
+    private string ConnBannerClass => _connState switch
+    {
+        HubConnectionState.Connected => "conn-ok",
+        HubConnectionState.Connecting or HubConnectionState.Reconnecting => "conn-warn",
+        _ => "conn-bad"
+    };
+
+    private string ConnBannerText => _connState switch
+    {
+        HubConnectionState.Connected => Loc.T("online.connOk"),
+        HubConnectionState.Connecting => Loc.T("online.connConnecting"),
+        HubConnectionState.Reconnecting => Loc.T("online.connReconnecting"),
+        _ => Loc.T("online.connLost")
+    };
 
     private void OnLang() => InvokeAsync(StateHasChanged);
 
@@ -138,6 +197,13 @@ else
         _youProfile = null;
         _oppProfile = null;
         _error = null;
+        _turnSecondsLeft = null;
+        StopTurnTimer();
+    }
+
+    private void SyncConnState()
+    {
+        _connState = _hub?.State ?? HubConnectionState.Disconnected;
     }
 
     protected override async Task OnInitializedAsync()
@@ -160,6 +226,8 @@ else
         if (!_hasPlus)
             return;
 
+        _hubStarted = true;
+        _connState = HubConnectionState.Connecting;
         var hubUrl = Api.BaseAddress + "/hubs/game";
         _hub = new HubConnectionBuilder()
             .WithUrl(hubUrl, options =>
@@ -200,6 +268,18 @@ else
         {
             _ = InvokeAsync(() => OnOpponentJoinedAsync(code));
         });
+        _hub.On<SeatStatusDto>("SeatStatus", status =>
+        {
+            _ = InvokeAsync(() =>
+            {
+                if (_playerIndex < 0 || string.IsNullOrEmpty(_code)) return Task.CompletedTask;
+                if (!string.Equals(status.Code, _code, StringComparison.OrdinalIgnoreCase)) return Task.CompletedTask;
+                if (status.PlayerIndex == _playerIndex) return Task.CompletedTask;
+                _opponentOnline = status.Online;
+                StateHasChanged();
+                return Task.CompletedTask;
+            });
+        });
         _hub.On<string>("Error", msg =>
         {
             _ = InvokeAsync(() =>
@@ -210,27 +290,52 @@ else
             });
         });
 
+        _hub.Reconnecting += _ => InvokeAsync(() =>
+        {
+            SyncConnState();
+            StateHasChanged();
+            return Task.CompletedTask;
+        });
         _hub.Reconnected += async _ =>
         {
-            if (_seated && !string.IsNullOrEmpty(_code))
+            SyncConnState();
+            if (_seated && !string.IsNullOrEmpty(_code) && _playerIndex >= 0)
+            {
+                try { await _hub.SendAsync("Reconnect", _code, _playerIndex); }
+                catch { /* refresh below */ }
                 await RefreshBoardAsync();
+                await RefreshSeatPresenceAsync();
+            }
+            await InvokeAsync(StateHasChanged);
         };
+        _hub.Closed += _ => InvokeAsync(() =>
+        {
+            SyncConnState();
+            StateHasChanged();
+            return Task.CompletedTask;
+        });
 
+        SyncConnState();
         await _hub.StartAsync();
+        SyncConnState();
 
         if (!string.IsNullOrWhiteSpace(Code))
         {
             var routeCode = Code.Trim().ToUpperInvariant();
             _joinCode = routeCode;
             if (await TryRestoreSeatAsync(routeCode))
+            {
+                try { await _hub.SendAsync("Reconnect", _code, _playerIndex); }
+                catch { /* GetBoard may still work after group join via GetBoard */ }
                 await RefreshBoardAsync();
+                await RefreshSeatPresenceAsync();
+            }
         }
     }
 
     private void ApplyBoard(MatchBoardDto? update)
     {
         if (update is null) return;
-        // Ignore stale GetBoard responses that arrive after a newer MatchUpdated.
         if (update.Revision > 0 && update.Revision < _boardRevision)
             return;
         if (update.Revision > 0)
@@ -239,6 +344,56 @@ else
         _youProfile = update.You;
         _oppProfile = update.Opponent;
         _error = null;
+        EnsureTurnTimer();
+    }
+
+    private void EnsureTurnTimer()
+    {
+        if (_view is null || _view.Phase != MatchPhase.Playing || !_view.IsYourTurn)
+        {
+            _turnSecondsLeft = null;
+            StopTurnTimer();
+            return;
+        }
+        if (_timerCts is not null) return;
+        _timerCts = new CancellationTokenSource();
+        var token = _timerCts.Token;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+                while (await timer.WaitForNextTickAsync(token))
+                {
+                    await InvokeAsync(() =>
+                    {
+                        UpdateTurnSeconds();
+                        StateHasChanged();
+                    });
+                }
+            }
+            catch (OperationCanceledException) { }
+        }, token);
+        UpdateTurnSeconds();
+    }
+
+    private void UpdateTurnSeconds()
+    {
+        if (_view is null || _view.Phase != MatchPhase.Playing || !_view.IsYourTurn)
+        {
+            _turnSecondsLeft = null;
+            return;
+        }
+        var limit = _view.TurnTimeoutSeconds > 0 ? _view.TurnTimeoutSeconds : 180;
+        var left = limit - (int)(DateTime.UtcNow - _view.LastActionUtc).TotalSeconds;
+        _turnSecondsLeft = Math.Max(0, left);
+    }
+
+    private void StopTurnTimer()
+    {
+        try { _timerCts?.Cancel(); } catch { /* ignore */ }
+        _timerCts?.Dispose();
+        _timerCts = null;
     }
 
     private async Task OnOpponentJoinedAsync(string code)
@@ -247,6 +402,7 @@ else
             return;
         if (!string.Equals(code, _code, StringComparison.OrdinalIgnoreCase))
             return;
+        _opponentOnline = true;
         await RefreshBoardAsync();
         StateHasChanged();
     }
@@ -265,6 +421,43 @@ else
         {
             _error = MapHubError(ex.Message);
         }
+    }
+
+    private async Task RefreshSeatPresenceAsync()
+    {
+        if (_hub is null || string.IsNullOrEmpty(_code) || _playerIndex < 0)
+            return;
+        try
+        {
+            var p = await _hub.InvokeAsync<SeatPresenceDto>("GetSeatPresence", _code);
+            _opponentOnline = _playerIndex == 0 ? p.GuestOnline : p.HostOnline;
+        }
+        catch { /* ignore */ }
+    }
+
+    private async Task ManualReconnect()
+    {
+        if (_hub is null) return;
+        _busy = true;
+        _error = null;
+        try
+        {
+            if (_hub.State == HubConnectionState.Disconnected)
+                await _hub.StartAsync();
+            SyncConnState();
+            if (_seated && !string.IsNullOrEmpty(_code) && _playerIndex >= 0)
+            {
+                await _hub.SendAsync("Reconnect", _code, _playerIndex);
+                await RefreshBoardAsync();
+                await RefreshSeatPresenceAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = MapHubError(ex.Message);
+            SyncConnState();
+        }
+        finally { _busy = false; }
     }
 
     private async Task SaveSeatAsync()
@@ -328,6 +521,7 @@ else
             _code = result.Code;
             _playerIndex = result.PlayerIndex;
             _seated = true;
+            _opponentOnline = false;
             await SaveSeatAsync();
             Nav.NavigateTo($"/online/room/{_code}", replace: true);
         }
@@ -356,6 +550,7 @@ else
             _code = result.Code;
             _playerIndex = result.PlayerIndex;
             _seated = true;
+            _opponentOnline = true;
             await SaveSeatAsync();
             await RefreshBoardAsync();
             Nav.NavigateTo($"/online/room/{_code}", replace: true);
@@ -380,6 +575,7 @@ else
         _code = null;
         _seated = false;
         _playerIndex = -1;
+        _opponentOnline = false;
         Nav.NavigateTo("/online");
     }
 
@@ -397,24 +593,48 @@ else
         }
     }
 
-    private Task Mulligan(Guid id) => _hub!.SendAsync("Mulligan", _code, _playerIndex, id);
-    private Task FinishMulligan() => _hub!.SendAsync("FinishMulligan", _code, _playerIndex);
-    private Task Pass() => _hub!.SendAsync("Pass", _code, _playerIndex);
-    private Task UseLeader() => _hub!.SendAsync("UseLeader", _code, _playerIndex);
+    private async Task CopyLink()
+    {
+        if (string.IsNullOrEmpty(RoomLink)) return;
+        try
+        {
+            await Js.InvokeVoidAsync("navigator.clipboard.writeText", RoomLink);
+            _copiedHint = Loc.T("online.linkCopied");
+        }
+        catch
+        {
+            _copiedHint = RoomLink;
+        }
+    }
+
+    private Task Mulligan(Guid id) => GuardSend(() => _hub!.SendAsync("Mulligan", _code, _playerIndex, id));
+    private Task FinishMulligan() => GuardSend(() => _hub!.SendAsync("FinishMulligan", _code, _playerIndex));
+    private Task Pass() => GuardSend(() => _hub!.SendAsync("Pass", _code, _playerIndex));
+    private Task UseLeader() => GuardSend(() => _hub!.SendAsync("UseLeader", _code, _playerIndex));
     private Task PlayCard((Guid CardId, CombatRow? Row, Guid? Target) a) =>
-        _hub!.SendAsync("PlayCard", _code, _playerIndex, a.CardId, a.Row?.ToString(), a.Target);
+        GuardSend(() => _hub!.SendAsync("PlayCard", _code, _playerIndex, a.CardId, a.Row?.ToString(), a.Target));
     private Task ResolvePending((Guid? Target, CombatRow? Row) a) =>
-        _hub!.SendAsync("ResolvePending", _code, _playerIndex, a.Target, a.Row?.ToString());
+        GuardSend(() => _hub!.SendAsync("ResolvePending", _code, _playerIndex, a.Target, a.Row?.ToString()));
     private Task ChooseStart(int who) =>
-        _hub!.SendAsync("ChooseWhoStarts", _code, _playerIndex, who);
+        GuardSend(() => _hub!.SendAsync("ChooseWhoStarts", _code, _playerIndex, who));
+
+    private async Task GuardSend(Func<Task> send)
+    {
+        if (InputLocked) return;
+        try { await send(); }
+        catch (Exception ex) { _error = MapHubError(ex.Message); }
+    }
 
     public async ValueTask DisposeAsync()
     {
         Loc.Changed -= OnLang;
+        StopTurnTimer();
         if (_hub is not null)
             await _hub.DisposeAsync();
     }
 
     private sealed record RoomCreatedDto(string Code, int PlayerIndex);
     private sealed record JoinedRoomDto(string Code, int PlayerIndex, Guid MatchId);
+    private sealed record SeatStatusDto(string Code, int PlayerIndex, bool Online);
+    private sealed record SeatPresenceDto(string Code, bool HostOnline, bool GuestOnline);
 }

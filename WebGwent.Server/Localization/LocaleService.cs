@@ -1,3 +1,5 @@
+using WebGwent.Server.Services;
+
 namespace WebGwent.Server.Localization;
 
 public enum AppLanguage
@@ -6,7 +8,7 @@ public enum AppLanguage
     Ru
 }
 
-public sealed class LocaleService
+public sealed class LocaleService(CustomFactionRegistry customFactions)
 {
     public AppLanguage Language { get; private set; } = AppLanguage.Ru;
 
@@ -38,15 +40,24 @@ public sealed class LocaleService
         _ => T("faction.neutral")
     };
 
-    public string FactionName(WebGwent.Game.Models.Faction faction) => faction switch
+    public string FactionName(WebGwent.Game.Models.Faction faction)
     {
-        WebGwent.Game.Models.Faction.NorthernRealms => T("faction.nr"),
-        WebGwent.Game.Models.Faction.Nilfgaard => T("faction.ng"),
-        WebGwent.Game.Models.Faction.Scoiatael => T("faction.st"),
-        WebGwent.Game.Models.Faction.Monsters => T("faction.mo"),
-        WebGwent.Game.Models.Faction.Skellige => T("faction.sk"),
-        _ => T("faction.neutral")
-    };
+        var custom = customFactions.DisplayName(faction, Language == AppLanguage.Ru);
+        if (!string.IsNullOrWhiteSpace(custom))
+            return custom;
+        return faction switch
+        {
+            WebGwent.Game.Models.Faction.NorthernRealms => T("faction.nr"),
+            WebGwent.Game.Models.Faction.Nilfgaard => T("faction.ng"),
+            WebGwent.Game.Models.Faction.Scoiatael => T("faction.st"),
+            WebGwent.Game.Models.Faction.Monsters => T("faction.mo"),
+            WebGwent.Game.Models.Faction.Skellige => T("faction.sk"),
+            WebGwent.Game.Models.Faction.Custom1 or WebGwent.Game.Models.Faction.Custom2
+                or WebGwent.Game.Models.Faction.Custom3 or WebGwent.Game.Models.Faction.Custom4
+                or WebGwent.Game.Models.Faction.Custom5 => T("faction.custom") + " " + ((int)faction - (int)WebGwent.Game.Models.Faction.Custom1 + 1),
+            _ => T("faction.neutral")
+        };
+    }
 
     public string Row(WebGwent.Game.Models.CombatRow row) => row switch
     {

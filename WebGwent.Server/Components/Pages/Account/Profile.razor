@@ -76,16 +76,9 @@ else
             }
 
             <div class="plus-buy-row">
-                <label>@Loc.T("plus.buyLabel")
-                    <select @bind="_buyMonths">
-                        <option value="1">1 @Loc.T("plus.month")</option>
-                        <option value="3">3 @Loc.T("plus.months")</option>
-                        <option value="12">12 @Loc.T("plus.months")</option>
-                    </select>
-                </label>
-                <button class="btn primary" disabled="@_busy" @onclick="BuyPlus">@Loc.T("plus.buyDemo")</button>
+                <a class="btn primary" href="/plus/checkout">@Loc.T("plus.buyDemo")</a>
             </div>
-            <p class="muted tiny">@Loc.T("plus.demoNote")</p>
+            <p class="muted tiny">@Loc.T("plus.checkoutShort")</p>
 
             <label>@Loc.T("plus.inviteCode")
                 <input @bind="_inviteCode" maxlength="32" placeholder="WGNT-XXXX-XXXX" />
@@ -100,6 +93,40 @@ else
 
         @if (_account.Role == AccountRole.Admin)
         {
+            <section class="setup-panel wide account-panel">
+                <h2>@Loc.T("plus.adminRequests")</h2>
+                @if (_inviteRequests.Count == 0)
+                {
+                    <p class="muted">@Loc.T("plus.noRequests")</p>
+                }
+                else
+                {
+                    <ul class="invite-list">
+                        @foreach (var req in _inviteRequests)
+                        {
+                            <li class="invite-row @(req.Status != InviteRequestStatus.Pending ? "is-used" : "")">
+                                <div>
+                                    <strong>@req.DisplayName</strong>
+                                    <span class="muted"> @($"@{req.Username}") · @req.RequestedDays @Loc.T("plus.day")</span>
+                                    <div class="muted tiny">@req.Status · @req.CreatedAtUtc.ToLocalTime().ToString("g")</div>
+                                    @if (!string.IsNullOrEmpty(req.GrantedInviteCode))
+                                    {
+                                        <code>@req.GrantedInviteCode</code>
+                                    }
+                                </div>
+                                @if (req.Status == InviteRequestStatus.Pending)
+                                {
+                                    <div class="invite-actions">
+                                        <button class="btn primary" type="button" disabled="@_busy" @onclick="() => ApproveRequest(req.Id)">@Loc.T("plus.approve")</button>
+                                        <button class="btn ghost" type="button" disabled="@_busy" @onclick="() => RejectRequest(req.Id)">@Loc.T("plus.reject")</button>
+                                    </div>
+                                }
+                            </li>
+                        }
+                    </ul>
+                }
+            </section>
+
             <section class="setup-panel wide account-panel">
                 <h2>@Loc.T("plus.adminInvites")</h2>
                 <div class="invite-create">
@@ -122,11 +149,14 @@ else
                     {
                         <li class="invite-row @(inv.Revoked || inv.UsedCount >= inv.MaxActivations ? "is-used" : "")">
                             <code>@inv.Code</code>
-                            <span>@inv.DurationDays d � @inv.UsedCount/@inv.MaxActivations</span>
+                            <span>@inv.DurationDays d · @inv.UsedCount/@inv.MaxActivations</span>
                             <button class="btn ghost" type="button" disabled="@_busy" @onclick="() => DeleteInvite(inv.Id)">@Loc.T("plus.deleteInvite")</button>
                         </li>
                     }
                 </ul>
+                <p class="muted" style="margin-top:1rem">
+                    <a href="/admin/content">@Loc.T("admin.contentLink")</a>
+                </p>
             </section>
         }
 
@@ -190,7 +220,6 @@ else
     private bool _ok;
     private bool _busy;
     private bool _hasCustomFile;
-    private int _buyMonths = 1;
     private string _inviteCode = "";
     private string? _plusMessage;
     private bool _plusOk;
@@ -198,6 +227,7 @@ else
     private int _inviteMax = 1;
     private string? _createdCode;
     private List<InviteRecord> _invites = [];
+    private List<InviteRequestDto> _inviteRequests = [];
 
     private PlayerAccount? _previewAccount => _account is null
         ? null
@@ -219,31 +249,53 @@ else
         _favCount = await Api.FavoriteCountAsync();
         _hasCustomFile = AvatarCatalog.IsCustom(_account.AvatarId) || _account.AvatarVersion > 0;
         if (_account.Role == AccountRole.Admin)
+        {
             _invites = await Api.ListInvitesAsync();
+            _inviteRequests = await Api.ListInviteRequestsAsync();
+        }
+    }
+
+    private async Task ApproveRequest(string id)
+    {
+        _busy = true;
+        try
+        {
+            await Api.ApproveInviteRequestAsync(id);
+            _inviteRequests = await Api.ListInviteRequestsAsync();
+            _invites = await Api.ListInvitesAsync();
+            _plusOk = true;
+            _plusMessage = Loc.T("plus.requestApprovedAdmin");
+        }
+        catch
+        {
+            _plusOk = false;
+            _plusMessage = Loc.T("plus.err.requestAction");
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task RejectRequest(string id)
+    {
+        _busy = true;
+        try
+        {
+            await Api.RejectInviteRequestAsync(id);
+            _inviteRequests = await Api.ListInviteRequestsAsync();
+            _plusOk = true;
+            _plusMessage = Loc.T("plus.requestRejectedAdmin");
+        }
+        catch
+        {
+            _plusOk = false;
+            _plusMessage = Loc.T("plus.err.requestAction");
+        }
+        finally { _busy = false; }
     }
 
     private void SelectPreset(string id)
     {
         _avatarId = id;
         _message = null;
-    }
-
-    private async Task BuyPlus()
-    {
-        if (_account is null) return;
-        _busy = true;
-        try
-        {
-            _account = (await Api.BuyPlusAsync(_buyMonths)).ToAccount();
-            _plusOk = true;
-            _plusMessage = Loc.T("plus.bought");
-        }
-        catch
-        {
-            _plusOk = false;
-            _plusMessage = Loc.T("plus.err.buy");
-        }
-        finally { _busy = false; }
     }
 
     private async Task RedeemInvite()

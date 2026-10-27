@@ -35,9 +35,9 @@ public sealed class GameSessionManager
     private readonly ConcurrentDictionary<BotDifficulty, BotAI> _bots = new();
     private readonly object _lock = new();
 
-    public GameSessionManager(string? deckStoragePath = null)
+    public GameSessionManager(string? deckStoragePath = null, CardCatalog? catalog = null)
     {
-        _catalog = CardCatalog.LoadEmbedded();
+        _catalog = catalog ?? CardCatalog.LoadEmbedded();
         _decks = new DeckLibrary(_catalog, deckStoragePath);
         _engine = new RulesEngine();
         _factory = new MatchFactory(_catalog, _engine);
@@ -225,19 +225,36 @@ public sealed class GameSessionManager
         }
     }
 
-    /// <summary>Clear a dropped SignalR connection id without deleting the room.</summary>
-    public void ClearConnection(string connectionId)
+    /// <summary>Clear a dropped SignalR connection. Returns affected seats (code, playerIndex).</summary>
+    public List<(string Code, int PlayerIndex)> ClearConnection(string connectionId)
     {
+        var hit = new List<(string, int)>();
         lock (_lock)
         {
             foreach (var room in _rooms.Values)
             {
                 if (string.Equals(room.HostConnectionId, connectionId, StringComparison.Ordinal))
+                {
                     room.HostConnectionId = null;
+                    hit.Add((room.Code, 0));
+                }
                 if (string.Equals(room.GuestConnectionId, connectionId, StringComparison.Ordinal))
+                {
                     room.GuestConnectionId = null;
+                    hit.Add((room.Code, 1));
+                }
             }
         }
+        return hit;
+    }
+
+    public (bool HostOnline, bool GuestOnline) GetSeatOnline(string code)
+    {
+        var room = GetRoom(code);
+        if (room is null) return (false, false);
+        return (
+            !string.IsNullOrEmpty(room.HostConnectionId),
+            !string.IsNullOrEmpty(room.GuestConnectionId));
     }
 
     /// <summary>Advance RoundEnd → next round. Returns false if not in RoundEnd.</summary>

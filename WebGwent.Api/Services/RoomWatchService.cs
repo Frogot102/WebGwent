@@ -84,14 +84,14 @@ public sealed class RoomWatchService(
 
             var updated = sessions.GetRoom(room.Code);
             if (updated is null) continue;
-            await BroadcastAsync(updated);
-            if (updated.Match.Phase == MatchPhase.RoundEnd)
-                ScheduleRoundContinue(updated.Code);
             if (updated.Match.Phase == MatchPhase.MatchEnd)
             {
                 try { accounts.RecordOnlineMatch(updated.HostAccountId, updated.GuestAccountId, updated.Match); }
                 catch { /* ignore */ }
             }
+            await BroadcastAsync(updated);
+            if (updated.Match.Phase == MatchPhase.RoundEnd)
+                ScheduleRoundContinue(updated.Code);
         }
 
         sessions.PruneIdleRooms(IdleRoomLifetime);
@@ -121,8 +121,13 @@ public sealed class RoomWatchService(
 
     private MatchBoardUpdate Build(GameRoom room, int viewerIndex)
     {
-        var host = BoardProfileFactory.FromAccountId(accounts, room.HostAccountId, room.Match.Players[0].Name);
-        var guest = BoardProfileFactory.FromAccountId(accounts, room.GuestAccountId, room.Match.Players[1].Name);
+        var matchId = room.Match.MatchId;
+        var host = room.Match.Phase == MatchPhase.MatchEnd
+            ? BoardProfileFactory.FromAccountIdForMatch(accounts, room.HostAccountId, room.Match.Players[0].Name, matchId)
+            : BoardProfileFactory.FromAccountId(accounts, room.HostAccountId, room.Match.Players[0].Name);
+        var guest = room.Match.Phase == MatchPhase.MatchEnd
+            ? BoardProfileFactory.FromAccountIdForMatch(accounts, room.GuestAccountId, room.Match.Players[1].Name, matchId)
+            : BoardProfileFactory.FromAccountId(accounts, room.GuestAccountId, room.Match.Players[1].Name);
         var you = viewerIndex == 0 ? host : guest;
         var opp = viewerIndex == 0 ? guest : host;
         return new MatchBoardUpdate(MatchView.From(room.Match, viewerIndex), you, opp, room.StateRevision);
