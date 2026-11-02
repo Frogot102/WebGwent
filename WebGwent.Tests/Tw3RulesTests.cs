@@ -337,11 +337,12 @@ public class Tw3RulesTests
     }
 
     [Fact]
-    public void Skellige_Brings_Back_Two_Units_In_Round_Three()
+    public void Skellige_Brings_Back_Two_Strongest_NonHero_Units_In_Round_Three()
     {
         var match = Ready(PresetDecks.Skellige(), PresetDecks.Monsters());
         var me = match.Players[0];
-        me.Discard.AddRange([Card("sk_olaf"), Card("sk_donar"), Card("sk_coral"), Card("n_decoy1")]);
+        // Olaf 12, Madman Lugos 6, Donar 4 + hero Hjalmar must be ignored
+        me.Discard.AddRange([Card("sk_olaf"), Card("sk_madman_lugos"), Card("sk_donar"), Card("sk_hjalmar"), Card("n_decoy1")]);
         match.RoundNumber = 2;
         match.Players[1].Hand.Add(Card("mo_fiend"));
         match.ActivePlayer = 1;
@@ -352,7 +353,27 @@ public class Tw3RulesTests
         _engine.ContinueAfterRound(match);
 
         Assert.Equal(3, match.RoundNumber);
-        Assert.Equal(2, me.AllBoardCards().Count(c => c.Type == CardType.Unit));
+        var revived = me.AllBoardCards().Where(c => c.Type == CardType.Unit).Select(c => c.Name).OrderBy(n => n).ToList();
+        Assert.Equal(["Madman Lugos", "Olaf"], revived);
+        Assert.DoesNotContain(me.AllBoardCards(), c => c.Name == "Hjalmar");
+        Assert.DoesNotContain(me.AllBoardCards(), c => c.Name == "Donar an Hindar");
+    }
+
+    [Fact]
+    public void Custom_Faction_Passive_Uses_Template()
+    {
+        _catalog.ApplyCustomOverlay([],
+        [
+            new CustomFactionRecord
+            {
+                Slot = Faction.Custom1,
+                NameEn = "Test",
+                NameRu = "Тест",
+                Passive = FactionPassive.Nilfgaard
+            }
+        ]);
+        Assert.Equal(FactionPassive.Nilfgaard, _catalog.ResolvePassive(Faction.Custom1));
+        Assert.Equal(FactionPassive.Skellige, _catalog.ResolvePassive(Faction.Skellige));
     }
 
     [Fact]

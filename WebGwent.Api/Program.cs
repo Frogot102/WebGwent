@@ -16,7 +16,9 @@ builder.Services.ConfigureHttpJsonOptions(o =>
     o.SerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
 });
 
+// Prefer env Jwt__Key / JWT_KEY in Docker; appsettings is the local default only.
 var jwtKey = builder.Configuration["Jwt:Key"]
+             ?? Environment.GetEnvironmentVariable("JWT_KEY")
              ?? "WebGwent-Dev-Signing-Key-Change-Me-32chars!";
 var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey));
 
@@ -102,3 +104,6 @@ app.MapWebGwentApi();
 app.MapHub<GameHub>("/hubs/game");
 
 app.Run();
+
+// Expose for WebApplicationFactory integration tests.
+public partial class Program;

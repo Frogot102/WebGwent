@@ -55,6 +55,28 @@ public sealed class MatchHistoryEntry
     public Guid MatchId { get; set; }
     /// <summary>Bot difficulty when Mode is Bot; otherwise null/empty.</summary>
     public string? BotDifficulty { get; set; }
+    /// <summary>Per-round scores from the player's perspective (you vs opp).</summary>
+    public List<RoundScoreEntry> RoundScores { get; set; } = [];
+}
+
+public sealed class RoundScoreEntry
+{
+    public int RoundNumber { get; set; }
+    public int YourScore { get; set; }
+    public int OppScore { get; set; }
+    public string Result { get; set; } = "Draw"; // Win | Loss | Draw
+}
+
+public sealed class LeaderboardEntry
+{
+    public Guid AccountId { get; set; }
+    public string DisplayName { get; set; } = "";
+    public int Rating { get; set; }
+    public int WinsVsPlayers { get; set; }
+    public int LossesVsPlayers { get; set; }
+    public int DrawsVsPlayers { get; set; }
+    public string AvatarId { get; set; } = "wolf";
+    public long AvatarVersion { get; set; }
 }
 
 public static class AvatarCatalog

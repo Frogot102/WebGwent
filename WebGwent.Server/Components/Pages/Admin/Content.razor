@@ -41,6 +41,15 @@ else if (_doc is not null)
                     <label>@Loc.T("admin.factionDesc")
                         <input @bind="f.Description" maxlength="200" />
                     </label>
+                    <label>@Loc.T("admin.factionPassive")
+                        <select @bind="f.Passive">
+                            <option value="@FactionPassive.NorthernRealms">Northern Realms</option>
+                            <option value="@FactionPassive.Nilfgaard">Nilfgaard</option>
+                            <option value="@FactionPassive.Scoiatael">Scoia'tael</option>
+                            <option value="@FactionPassive.Monsters">Monsters</option>
+                            <option value="@FactionPassive.Skellige">Skellige</option>
+                        </select>
+                    </label>
                     <button type="button" class="btn ghost" @onclick="() => RemoveFaction(f)">@Loc.T("admin.delete")</button>
                 </div>
             }
@@ -166,7 +175,8 @@ else if (_doc is not null)
         {
             Slot = slot,
             NameEn = "Custom " + ((int)slot - (int)Faction.Custom1 + 1),
-            NameRu = "Своя " + ((int)slot - (int)Faction.Custom1 + 1)
+            NameRu = "Своя " + ((int)slot - (int)Faction.Custom1 + 1),
+            Passive = FactionPassive.NorthernRealms
         });
     }
 

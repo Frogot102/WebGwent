@@ -927,9 +927,9 @@ public sealed class RulesEngine
         int? roundWinner;
         if (s0 > s1) roundWinner = 0;
         else if (s1 > s0) roundWinner = 1;
-        else if (match.Players[0].Faction == Faction.Nilfgaard && match.Players[1].Faction != Faction.Nilfgaard)
+        else if (HasPassive(match.Players[0], FactionPassive.Nilfgaard) && !HasPassive(match.Players[1], FactionPassive.Nilfgaard))
             roundWinner = 0; // Nilfgaard wins draws
-        else if (match.Players[1].Faction == Faction.Nilfgaard && match.Players[0].Faction != Faction.Nilfgaard)
+        else if (HasPassive(match.Players[1], FactionPassive.Nilfgaard) && !HasPassive(match.Players[0], FactionPassive.Nilfgaard))
             roundWinner = 1;
         else
             roundWinner = null;
@@ -939,7 +939,7 @@ public sealed class RulesEngine
             match.Players[w].RoundWins++;
             match.Players[1 - w].Lives--;
             match.AddLog($"{match.Players[w].Name} wins the round.");
-            if (match.Players[w].Faction == Faction.NorthernRealms)
+            if (HasPassive(match.Players[w], FactionPassive.NorthernRealms))
             {
                 Draw(match.Players[w], 1);
                 match.AddLog($"{match.Players[w].Name} draws (Northern Realms).");
@@ -991,7 +991,7 @@ public sealed class RulesEngine
         match.RoundNumber++;
         foreach (var p in match.Players)
         {
-            var keepMonster = p.Faction == Faction.Monsters;
+            var keepMonster = HasPassive(p, FactionPassive.Monsters);
             p.ClearBoardToDiscard(keepMonster, _rng);
             p.HasPassed = false;
         }
@@ -1000,7 +1000,7 @@ public sealed class RulesEngine
 
         if (match.RoundNumber == 3)
         {
-            foreach (var p in match.Players.Where(p => p.Faction == Faction.Skellige))
+            foreach (var p in match.Players.Where(p => HasPassive(p, FactionPassive.Skellige)))
                 SkelligeRevive(match, p);
         }
 
@@ -1013,12 +1013,14 @@ public sealed class RulesEngine
     }
 
     /// <summary>
-    /// Skellige: two random units from the discard pile return to the battlefield at the start of round 3.
+    /// Skellige: the two strongest non-Hero units from discard return at the start of round 3 (TW3).
     /// </summary>
     private void SkelligeRevive(MatchState match, PlayerState player)
     {
-        var units = player.Discard.Where(c => c.Type == CardType.Unit)
-            .OrderBy(_ => _rng.Next())
+        var units = player.Discard
+            .Where(c => c.Type == CardType.Unit && !c.IsHero)
+            .OrderByDescending(c => c.BaseStrength)
+            .ThenBy(c => c.Name, StringComparer.OrdinalIgnoreCase)
             .Take(2)
             .ToList();
         foreach (var u in units)
@@ -1033,6 +1035,9 @@ public sealed class RulesEngine
             match.AddLog($"Skellige revived {units.Count} unit(s).");
     }
 
+    private static bool HasPassive(PlayerState player, FactionPassive passive) =>
+        player.FactionPassive == passive;
+
     private void TryFinishMulligan(MatchState match)
     {
         if (match.Players.Any(p => p.MulliganLeft > 0 && !p.IsBot))
@@ -1046,9 +1051,9 @@ public sealed class RulesEngine
             return;
 
         // Scoia'tael chooses who starts
-        var scoia = match.Players.FirstOrDefault(p => p.Faction == Faction.Scoiatael);
+        var scoia = match.Players.FirstOrDefault(p => HasPassive(p, FactionPassive.Scoiatael));
         if (scoia != null && !match.ScoiataelChoseStart
-            && match.Players.Count(p => p.Faction == Faction.Scoiatael) == 1)
+            && match.Players.Count(p => HasPassive(p, FactionPassive.Scoiatael)) == 1)
         {
             match.Pending = new PendingAction
             {

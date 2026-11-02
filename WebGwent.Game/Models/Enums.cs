@@ -132,9 +132,36 @@ public enum WeatherEffect
 
 public enum GameMode
 {
+    /// <summary>Used by unit tests / local two-player on one engine; no dedicated Blazor page.</summary>
     Hotseat,
     VsBot,
     Online
+}
+
+/// <summary>
+/// Faction passive template. Base factions map 1:1; custom slots pick one of these in admin content.
+/// </summary>
+public enum FactionPassive
+{
+    None = 0,
+    NorthernRealms,
+    Nilfgaard,
+    Scoiatael,
+    Monsters,
+    Skellige
+}
+
+public static class FactionPassives
+{
+    public static FactionPassive FromBaseFaction(Faction f) => f switch
+    {
+        Faction.NorthernRealms => FactionPassive.NorthernRealms,
+        Faction.Nilfgaard => FactionPassive.Nilfgaard,
+        Faction.Scoiatael => FactionPassive.Scoiatael,
+        Faction.Monsters => FactionPassive.Monsters,
+        Faction.Skellige => FactionPassive.Skellige,
+        _ => FactionPassive.None
+    };
 }
 
 /// <summary>

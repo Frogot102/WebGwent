@@ -28,6 +28,7 @@
                     <th>@Loc.T("auth.opponent")</th>
                     <th>@Loc.T("auth.result")</th>
                     <th>@Loc.T("auth.score")</th>
+                    <th>@Loc.T("auth.rounds")</th>
                     <th>@Loc.T("auth.rating")</th>
                 </tr>
             </thead>
@@ -45,12 +46,16 @@
                         <td>@m.OpponentName</td>
                         <td>@ResultLabel(m.Result)</td>
                         <td>@m.PlayerRoundWins — @m.OpponentRoundWins</td>
+                        <td class="round-scores">@RoundDetail(m)</td>
                         <td class="delta">@ratingCell</td>
                     </tr>
                 }
             </tbody>
         </table>
-        <a class="link-back" href="/account/profile">@Loc.T("auth.profile")</a>
+        <div class="history-links">
+            <a href="/account/leaderboard">@Loc.T("auth.leaderboard")</a>
+            <a class="link-back" href="/account/profile">@Loc.T("auth.profile")</a>
+        </div>
     }
 </div>
 
@@ -71,4 +76,12 @@
         "Loss" => Loc.T("auth.resultLose"),
         _ => Loc.T("auth.resultDraw")
     };
+
+    private string RoundDetail(MatchHistoryEntry m)
+    {
+        if (m.RoundScores is null || m.RoundScores.Count == 0)
+            return "—";
+        return string.Join(" · ", m.RoundScores.Select(r =>
+            $"R{r.RoundNumber}: {r.YourScore}–{r.OppScore}"));
+    }
 }

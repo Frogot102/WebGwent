@@ -255,6 +255,11 @@ public sealed class WebGwentApiClient(HttpClient http, TokenStore tokens)
         return await http.GetFromJsonAsync<List<MatchHistoryEntry>>("/api/account/history", Json) ?? [];
     }
 
+    public async Task<List<LeaderboardEntry>> LeaderboardAsync(int take = 20)
+    {
+        return await http.GetFromJsonAsync<List<LeaderboardEntry>>($"/api/account/leaderboard?take={take}", Json) ?? [];
+    }
+
     public async Task<int> FavoriteCountAsync()
     {
         await ApplyAuthAsync();
