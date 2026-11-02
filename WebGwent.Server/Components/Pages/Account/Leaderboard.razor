@@ -1,0 +1,57 @@
+@page "/account/leaderboard"
+@inject WebGwentApiClient Api
+@inject LocaleService Loc
+
+<PageTitle>WebGwent — @Loc.T("auth.leaderboard")</PageTitle>
+
+<div class="history-page">
+    <h1>@Loc.T("auth.leaderboard")</h1>
+    <p class="lede muted">@Loc.T("auth.leaderboardLede")</p>
+
+    @if (_rows.Count == 0)
+    {
+        <p class="muted">@Loc.T("auth.leaderboardEmpty")</p>
+    }
+    else
+    {
+        <table class="history-table leaderboard-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>@Loc.T("auth.player")</th>
+                    <th>@Loc.T("auth.rating")</th>
+                    <th>W</th>
+                    <th>L</th>
+                    <th>D</th>
+                </tr>
+            </thead>
+            <tbody>
+                @{
+                    var i = 0;
+                }
+                @foreach (var r in _rows)
+                {
+                    i++;
+                    <tr>
+                        <td>@i</td>
+                        <td>@r.DisplayName</td>
+                        <td class="delta">@r.Rating</td>
+                        <td>@r.WinsVsPlayers</td>
+                        <td>@r.LossesVsPlayers</td>
+                        <td>@r.DrawsVsPlayers</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+    <a class="link-back" href="/account/history">@Loc.T("auth.history")</a>
+</div>
+
+@code {
+    private List<LeaderboardEntry> _rows = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        _rows = await Api.LeaderboardAsync();
+    }
+}

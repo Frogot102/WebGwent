@@ -47,7 +47,7 @@ public sealed class CustomFactionRegistry(CardCatalog catalog)
                 .Where(f => CustomFactionSlots.IsCustom(f.Slot))
                 .GroupBy(f => f.Slot)
                 .ToDictionary(g => g.Key, g => g.First());
-            catalog.ApplyCustomOverlay(doc.Cards.Select(c => c.ToDefinition()));
+            catalog.ApplyCustomOverlay(doc.Cards.Select(c => c.ToDefinition()), doc.Factions);
         }
     }
 }

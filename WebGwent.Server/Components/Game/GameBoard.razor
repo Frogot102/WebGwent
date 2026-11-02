@@ -401,6 +401,7 @@
     private int _toastKey;
     private Guid? _lastFlyCardId;
     private Guid? _lastInspectedPlayId;
+    private string? _lastFxSource;
     private Guid _boundMatchId;
 
     private CardView? Inspected => _inspected ?? _selected;
@@ -479,6 +480,46 @@
             {
                 /* script not ready / prerender */
             }
+        }
+
+        await TryPlayBoardFxAsync();
+    }
+
+    private async Task TryPlayBoardFxAsync()
+    {
+        if (View is null || View.Phase != MatchPhase.Playing)
+            return;
+
+        var source = $"{View.LastPlayedCardId}|{View.LastActionPlayer}|{View.LastPlayedCardName}|{View.LastMessage}";
+        if (source == _lastFxSource)
+            return;
+        _lastFxSource = source;
+
+        var name = View.LastPlayedCardName ?? "";
+        var msg = View.LastMessage ?? "";
+        var fx = "playCard";
+        if (name.Contains("Scorch", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("Villentretenmerth", StringComparison.OrdinalIgnoreCase)
+            || msg.Contains("Scorch", StringComparison.OrdinalIgnoreCase)
+            || msg.Contains("scorch", StringComparison.OrdinalIgnoreCase))
+            fx = "scorch";
+        else if (name.Contains("Frost", StringComparison.OrdinalIgnoreCase)
+                 || name.Contains("Fog", StringComparison.OrdinalIgnoreCase)
+                 || name.Contains("Rain", StringComparison.OrdinalIgnoreCase)
+                 || name.Contains("Storm", StringComparison.OrdinalIgnoreCase)
+                 || name.Contains("Clear Weather", StringComparison.OrdinalIgnoreCase)
+                 || msg.Contains("weather", StringComparison.OrdinalIgnoreCase))
+            fx = "weather";
+        else if (msg.Contains("passes", StringComparison.OrdinalIgnoreCase))
+            fx = "pass";
+
+        try
+        {
+            await Js.InvokeVoidAsync($"webGwentFx.{fx}");
+        }
+        catch (JSException)
+        {
+            /* ignore */
         }
     }
 

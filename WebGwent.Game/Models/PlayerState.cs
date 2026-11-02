@@ -7,6 +7,8 @@ public sealed class PlayerState
     public int Index { get; init; }
     public string Name { get; set; } = "Player";
     public Faction Faction { get; set; }
+    /// <summary>Effective faction passive (base faction or custom slot template).</summary>
+    public FactionPassive FactionPassive { get; set; }
     public CardInstance? Leader { get; set; }
     public bool LeaderUsed { get; set; }
     /// <summary>Set by the opponent's Emhyr: The White Flame — no active or passive leader effect.</summary>
@@ -80,6 +82,7 @@ public sealed class PlayerState
             Index = Index,
             Name = Name,
             Faction = Faction,
+            FactionPassive = FactionPassive,
             Leader = Leader?.Clone(),
             LeaderUsed = LeaderUsed,
             LeaderCancelled = LeaderCancelled,
