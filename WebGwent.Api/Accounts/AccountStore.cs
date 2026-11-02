@@ -334,6 +334,46 @@ public sealed class AccountStore
         }
     }
 
+    public IReadOnlyList<LeaderboardEntry> GetLeaderboard(int take = 20)
+    {
+        lock (_lock)
+        {
+            return _accounts
+                .Where(a => a.MatchesVsPlayers > 0 || a.Rating != 1000)
+                .OrderByDescending(a => a.Rating)
+                .ThenByDescending(a => a.WinsVsPlayers)
+                .Take(take)
+                .Select(a => new LeaderboardEntry
+                {
+                    AccountId = a.Id,
+                    DisplayName = a.DisplayName,
+                    Rating = a.Rating,
+                    WinsVsPlayers = a.WinsVsPlayers,
+                    LossesVsPlayers = a.LossesVsPlayers,
+                    DrawsVsPlayers = a.DrawsVsPlayers,
+                    AvatarId = a.AvatarId,
+                    AvatarVersion = a.AvatarVersion
+                })
+                .ToList();
+        }
+    }
+
+    private static List<RoundScoreEntry> BuildRoundScores(MatchState match, int viewerIndex) =>
+        match.RoundHistory.Select(r =>
+        {
+            var yours = viewerIndex == 0 ? r.Score0 : r.Score1;
+            var opp = viewerIndex == 0 ? r.Score1 : r.Score0;
+            var result = r.WinnerIndex is null ? "Draw"
+                : r.WinnerIndex == viewerIndex ? "Win" : "Loss";
+            return new RoundScoreEntry
+            {
+                RoundNumber = r.RoundNumber,
+                YourScore = yours,
+                OppScore = opp,
+                Result = result
+            };
+        }).ToList();
+
     public bool HasMatch(Guid matchId)
     {
         lock (_lock)
@@ -385,7 +425,8 @@ public sealed class AccountStore
                 OpponentRoundWins = opp.RoundWins,
                 RatingBefore = before,
                 RatingDelta = 0,
-                BotDifficulty = match.BotDifficulty.ToString()
+                BotDifficulty = match.BotDifficulty.ToString(),
+                RoundScores = BuildRoundScores(match, viewerIndex)
             });
 
             RefreshFavoriteFaction(acc);
@@ -439,7 +480,8 @@ public sealed class AccountStore
                     PlayerRoundWins = you.RoundWins,
                     OpponentRoundWins = opp.RoundWins,
                     RatingBefore = before,
-                    RatingDelta = delta
+                    RatingDelta = delta,
+                    RoundScores = BuildRoundScores(match, index)
                 });
 
                 RefreshFavoriteFaction(acc);
@@ -546,6 +588,13 @@ public sealed class AccountStore
         RatingBefore = m.RatingBefore,
         RatingDelta = m.RatingDelta,
         MatchId = m.MatchId,
-        BotDifficulty = m.BotDifficulty
+        BotDifficulty = m.BotDifficulty,
+        RoundScores = m.RoundScores.Select(r => new RoundScoreEntry
+        {
+            RoundNumber = r.RoundNumber,
+            YourScore = r.YourScore,
+            OppScore = r.OppScore,
+            Result = r.Result
+        }).ToList()
     };
 }

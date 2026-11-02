@@ -28,8 +28,15 @@ dotnet run --project WebGwent.Api
 dotnet run --project WebGwent.Server
 ```
 
+Или Docker:
+
+```bash
+cp .env.example .env   # задайте JWT_KEY и ADMIN_PASSWORD
+docker compose up --build
+```
+
 UI: http://localhost:5097 · API: http://localhost:5180  
-Как устроены endpoint’ы: [docs/API.md](docs/API.md).
+Endpoint’ы: [docs/API.md](docs/API.md). Демо к защите: [docs/DEMO.md](docs/DEMO.md).
 
 Тесты:
 

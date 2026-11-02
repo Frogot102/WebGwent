@@ -39,7 +39,8 @@ public sealed class CustomContentStore
                     Slot = f.Slot,
                     NameEn = f.NameEn,
                     NameRu = f.NameRu,
-                    Description = f.Description
+                    Description = f.Description,
+                    Passive = f.Passive == FactionPassive.None ? FactionPassive.NorthernRealms : f.Passive
                 }).ToList(),
                 Cards = _doc.Cards.Select(c => new CustomCardRecord
                 {
@@ -125,6 +126,6 @@ public sealed class CustomContentStore
     private void ApplyUnlocked()
     {
         var cards = _doc.Cards.Select(c => c.ToDefinition()).ToList();
-        _catalog.ApplyCustomOverlay(cards);
+        _catalog.ApplyCustomOverlay(cards, _doc.Factions);
     }
 }
