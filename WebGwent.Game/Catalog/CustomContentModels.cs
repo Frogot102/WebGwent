@@ -14,6 +14,8 @@ public sealed class CustomFactionRecord
     public string NameEn { get; set; } = "";
     public string NameRu { get; set; } = "";
     public string Description { get; set; } = "";
+    /// <summary>Which classic faction passive this custom slot uses in RulesEngine.</summary>
+    public FactionPassive Passive { get; set; } = FactionPassive.NorthernRealms;
 }
 
 public sealed class CustomCardRecord

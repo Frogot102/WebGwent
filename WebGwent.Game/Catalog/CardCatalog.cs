@@ -10,11 +10,46 @@ public sealed class CardCatalog
     private readonly object _lock = new();
     private readonly List<CardDefinition> _embedded;
     private Dictionary<string, CardDefinition> _byId;
+    private Dictionary<Faction, FactionPassive> _customPassives = new();
 
     public CardCatalog(IEnumerable<CardDefinition> cards)
     {
         _embedded = cards.ToList();
         _byId = _embedded.ToDictionary(c => c.Id, StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>Resolve faction passive for base or admin-defined custom slots.</summary>
+    public FactionPassive ResolvePassive(Faction faction)
+    {
+        lock (_lock)
+        {
+            if (CustomFactionSlots.IsCustom(faction) && _customPassives.TryGetValue(faction, out var p))
+                return p;
+            return FactionPassives.FromBaseFaction(faction);
+        }
+    }
+
+    public void ApplyCustomOverlay(IEnumerable<CardDefinition> customCards, IEnumerable<CustomFactionRecord>? factions = null)
+    {
+        lock (_lock)
+        {
+            _byId = _embedded.ToDictionary(c => c.Id, StringComparer.OrdinalIgnoreCase);
+            foreach (var c in customCards)
+            {
+                if (string.IsNullOrWhiteSpace(c.Id)) continue;
+                _byId[c.Id] = c;
+            }
+
+            _customPassives = factions?
+                .Where(f => CustomFactionSlots.IsCustom(f.Slot))
+                .GroupBy(f => f.Slot)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.First().Passive == FactionPassive.None
+                        ? FactionPassive.NorthernRealms
+                        : g.First().Passive)
+                ?? new Dictionary<Faction, FactionPassive>();
+        }
     }
 
     public IReadOnlyDictionary<string, CardDefinition> All
@@ -42,20 +77,6 @@ public sealed class CardCatalog
     {
         lock (_lock)
             return _byId.Values.Where(c => c.Faction == faction || c.Faction == Faction.Neutral).ToList();
-    }
-
-    /// <summary>Replace overlay custom cards; embedded TW3 set stays as the base.</summary>
-    public void ApplyCustomOverlay(IEnumerable<CardDefinition> customCards)
-    {
-        lock (_lock)
-        {
-            _byId = _embedded.ToDictionary(c => c.Id, StringComparer.OrdinalIgnoreCase);
-            foreach (var c in customCards)
-            {
-                if (string.IsNullOrWhiteSpace(c.Id)) continue;
-                _byId[c.Id] = c;
-            }
-        }
     }
 
     public static CardCatalog LoadEmbedded()

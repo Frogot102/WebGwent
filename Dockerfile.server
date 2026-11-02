@@ -1,0 +1,16 @@
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+COPY WebGwent.Game/WebGwent.Game.csproj WebGwent.Game/
+COPY WebGwent.Server/WebGwent.Server.csproj WebGwent.Server/
+RUN dotnet restore WebGwent.Server/WebGwent.Server.csproj
+COPY WebGwent.Game/ WebGwent.Game/
+COPY WebGwent.Server/ WebGwent.Server/
+RUN dotnet publish WebGwent.Server/WebGwent.Server.csproj -c Release -o /app/publish /p:UseAppHost=false
+
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
+WORKDIR /app
+COPY --from=build /app/publish .
+ENV ASPNETCORE_URLS=http://+:5097
+ENV ApiBaseUrl=http://api:5180
+EXPOSE 5097
+ENTRYPOINT ["dotnet", "WebGwent.Server.dll"]

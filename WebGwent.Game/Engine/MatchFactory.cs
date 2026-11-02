@@ -54,6 +54,7 @@ public sealed class MatchFactory
             Index = index,
             Name = name,
             Faction = deck.Faction,
+            FactionPassive = _catalog.ResolvePassive(deck.Faction),
             Leader = CardInstance.FromDefinition(leaderDef),
             Deck = cards,
             IsBot = isBot,

@@ -13,6 +13,8 @@ public sealed class SavedDeck
     public string LeaderId { get; set; } = "";
     public List<string> CardIds { get; set; } = [];
     public bool IsPreset { get; set; }
+    /// <summary>Null for presets / legacy decks; custom decks belong to an account.</summary>
+    public Guid? OwnerAccountId { get; set; }
     public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
 
     public DeckList ToDeckList() => new(Name, Faction, LeaderId, CardIds);
@@ -53,6 +55,21 @@ public sealed class DeckLibrary
     public IReadOnlyList<SavedDeck> GetAll() =>
         GetPresets().Concat(GetCustom()).ToList();
 
+    /// <summary>Presets for everyone + custom decks owned by <paramref name="accountId"/> (and legacy unowned).</summary>
+    public IReadOnlyList<SavedDeck> GetVisibleTo(Guid? accountId)
+    {
+        lock (_lock)
+        {
+            var customs = _custom
+                .Where(d => d.OwnerAccountId is null
+                            || (accountId is Guid id && d.OwnerAccountId == id))
+                .OrderByDescending(d => d.UpdatedUtc)
+                .Select(Clone)
+                .ToList();
+            return GetPresets().Concat(customs).ToList();
+        }
+    }
+
     public SavedDeck? Get(Guid id)
     {
         var preset = GetPresets().FirstOrDefault(p => p.Id == id);
@@ -60,32 +77,48 @@ public sealed class DeckLibrary
         lock (_lock) return _custom.FirstOrDefault(d => d.Id == id);
     }
 
-    public SavedDeck Save(SavedDeck deck)
+    public SavedDeck Save(SavedDeck deck, Guid ownerAccountId)
     {
         if (deck.IsPreset)
             throw new InvalidOperationException("Cannot overwrite presets.");
+        if (ownerAccountId == Guid.Empty)
+            throw new InvalidOperationException("OwnerRequired");
 
-        var validation = DeckValidator.Validate(deck.ToDeckList(), _catalog);
         // Allow saving invalid drafts, but mark via UpdatedUtc
         deck.UpdatedUtc = DateTime.UtcNow;
         if (deck.Id == Guid.Empty)
             deck.Id = Guid.NewGuid();
+        deck.OwnerAccountId = ownerAccountId;
+        deck.IsPreset = false;
 
         lock (_lock)
         {
             var idx = _custom.FindIndex(d => d.Id == deck.Id);
-            if (idx >= 0) _custom[idx] = Clone(deck);
-            else _custom.Add(Clone(deck));
+            if (idx >= 0)
+            {
+                var existing = _custom[idx];
+                if (existing.OwnerAccountId is Guid oid && oid != ownerAccountId)
+                    throw new UnauthorizedAccessException("NotOwner");
+                _custom[idx] = Clone(deck);
+            }
+            else
+            {
+                _custom.Add(Clone(deck));
+            }
             Persist();
         }
 
         return deck;
     }
 
-    public bool Delete(Guid id)
+    public bool Delete(Guid id, Guid ownerAccountId)
     {
         lock (_lock)
         {
+            var existing = _custom.FirstOrDefault(d => d.Id == id);
+            if (existing is null) return false;
+            if (existing.OwnerAccountId is Guid oid && oid != ownerAccountId)
+                throw new UnauthorizedAccessException("NotOwner");
             var removed = _custom.RemoveAll(d => d.Id == id) > 0;
             if (removed) Persist();
             return removed;
@@ -180,6 +213,7 @@ public sealed class DeckLibrary
         LeaderId = d.LeaderId,
         CardIds = [.. d.CardIds],
         IsPreset = false,
+        OwnerAccountId = d.OwnerAccountId,
         UpdatedUtc = d.UpdatedUtc
     };
 

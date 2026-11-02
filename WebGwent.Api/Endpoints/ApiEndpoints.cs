@@ -18,10 +18,11 @@ public static class ApiEndpoints
         app.MapGet("/api/auth/me", Me).RequireAuthorization();
         app.MapGet("/api/avatars/{userId:guid}", GetAvatar).AllowAnonymous();
 
-        app.MapGet("/api/decks", ListDecks).AllowAnonymous();
+        app.MapGet("/api/decks", ListDecks).AllowAnonymous(); // guests: presets only; users: presets + own
         app.MapGet("/api/decks/{id:guid}", GetDeck).AllowAnonymous();
         app.MapPost("/api/decks", SaveDeck).RequireAuthorization();
         app.MapDelete("/api/decks/{id:guid}", DeleteDeck).RequireAuthorization();
+        app.MapGet("/api/account/leaderboard", Leaderboard).AllowAnonymous();
 
         app.MapPost("/api/matches/bot", CreateBotMatch).AllowAnonymous();
         app.MapGet("/api/matches/bot/{id:guid}", GetBotMatch).AllowAnonymous();
@@ -104,35 +105,76 @@ public static class ApiEndpoints
         return acc is null ? Results.Unauthorized() : Results.Ok(AccountDto.From(acc));
     }
 
-    private static IResult ListDecks(GameSessionManager sessions) =>
-        Results.Ok(sessions.Decks.GetAll().Select(DeckDto.From));
+    private static IResult ListDecks(ClaimsPrincipal user, GameSessionManager sessions)
+    {
+        var id = TryUserId(user);
+        // Anonymous → presets only. Authed → presets + own custom (+ legacy unowned).
+        if (id is null)
+            return Results.Ok(sessions.Decks.GetPresets().Select(DeckDto.From));
+        return Results.Ok(sessions.Decks.GetVisibleTo(id).Select(DeckDto.From));
+    }
 
-    private static IResult GetDeck(Guid id, GameSessionManager sessions)
+    private static IResult GetDeck(Guid id, ClaimsPrincipal user, GameSessionManager sessions)
     {
         var deck = sessions.Decks.Get(id);
-        return deck is null ? Results.NotFound() : Results.Ok(DeckDto.From(deck));
-    }
+        if (deck is null) return Results.NotFound();
+        if (deck.IsPreset)
+            return Results.Ok(DeckDto.From(deck));
 
-    private static IResult SaveDeck(SavedDeckDto body, GameSessionManager sessions)
-    {
-        var saved = new SavedDeck
+        var uid = TryUserId(user);
+        if (deck.OwnerAccountId is Guid owner)
         {
-            Id = body.Id == Guid.Empty ? Guid.NewGuid() : body.Id,
-            Name = body.Name,
-            Faction = body.Faction,
-            LeaderId = body.LeaderId,
-            CardIds = body.CardIds.ToList(),
-            IsPreset = false
-        };
-        sessions.Decks.Save(saved);
-        return Results.Ok(DeckDto.From(saved));
+            if (uid is null || owner != uid)
+                return Results.NotFound();
+        }
+        else if (uid is null)
+        {
+            // Legacy unowned custom decks: only for authenticated callers.
+            return Results.Unauthorized();
+        }
+
+        return Results.Ok(DeckDto.From(deck));
     }
 
-    private static IResult DeleteDeck(Guid id, GameSessionManager sessions)
+    private static IResult SaveDeck(SavedDeckDto body, ClaimsPrincipal user, GameSessionManager sessions)
     {
-        sessions.Decks.Delete(id);
-        return Results.NoContent();
+        try
+        {
+            var owner = RequireUserId(user);
+            var saved = new SavedDeck
+            {
+                Id = body.Id == Guid.Empty ? Guid.NewGuid() : body.Id,
+                Name = body.Name,
+                Faction = body.Faction,
+                LeaderId = body.LeaderId,
+                CardIds = body.CardIds.ToList(),
+                IsPreset = false,
+                OwnerAccountId = owner
+            };
+            sessions.Decks.Save(saved, owner);
+            return Results.Ok(DeckDto.From(saved));
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Results.Forbid();
+        }
     }
+
+    private static IResult DeleteDeck(Guid id, ClaimsPrincipal user, GameSessionManager sessions)
+    {
+        try
+        {
+            var owner = RequireUserId(user);
+            return sessions.Decks.Delete(id, owner) ? Results.NoContent() : Results.NotFound();
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Results.Forbid();
+        }
+    }
+
+    private static IResult Leaderboard(AccountStore store, int take = 20) =>
+        Results.Ok(store.GetLeaderboard(Math.Clamp(take, 1, 100)));
 
     private static IResult CreateBotMatch(CreateBotMatchRequest req, BotMatchService bots, ClaimsPrincipal user)
     {
