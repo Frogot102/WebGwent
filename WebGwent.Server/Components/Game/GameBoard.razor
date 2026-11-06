@@ -151,7 +151,7 @@
                     @if (Inspected is { } focus)
                     {
                         <div class="inspect-card faction-@focus.Faction.ToString().ToLowerInvariant() @(focus.IsHero ? "hero" : "") @(focus.Type == CardType.Special ? "special" : "")">
-                            @if (CardArt.Url(focus.DefinitionId, focus.Name) is { } focusArt)
+                            @if (CardArt.Url(focus.DefinitionId, focus.Name, Loc.Language) is { } focusArt)
                             {
                                 @* The whole card, as in TW3; its live strength is drawn on it. *@
                                 <div class="card-face inspect-face @(CardArt.IsPlainArt(focus.DefinitionId, focus.Name) ? "art-full" : "") @CardArt.GlowClass(focus)"
@@ -159,6 +159,10 @@
                                     @if (CardArt.ShowsStrength(focus))
                                     {
                                         <span class="art-strength @CardArt.StrengthTrend(focus)">@focus.CurrentStrength</span>
+                                    }
+                                    @if (CardArt.NamePlate(focus.DefinitionId, focus.Name, Loc.Language) is { Length: > 0 } plate)
+                                    {
+                                        <span class="art-name @plate">@Loc.CardName(focus.Name)</span>
                                     }
                                 </div>
                             }
@@ -289,7 +293,7 @@
                     </label>
                 }
             </div>
-            <div class="card-row hand">
+            <div class="card-row hand" style="--n: @View.You.Hand.Count">
                 @foreach (var card in View.You.Hand)
                 {
                     <GwentCard @key="card.InstanceId"
@@ -759,7 +763,7 @@
                     <span class="horn-badge">♪</span>
                 }
             </div>
-            <div class="card-row">
+            <div class="card-row" style="--n: @cards.Count">
                 @foreach (var c in cards)
                 {
                     var boardCard = c;

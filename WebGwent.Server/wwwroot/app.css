@@ -2421,6 +2421,29 @@ img.meta-avatar.avatar-img {
   pointer-events: none;
 }
 @container (max-width: 56px) { .art-name { display: none; } }
+/* Over a face printed in the other language: a parchment plate hides the printed name. */
+.art-name.over-print {
+  top: 77%;
+  padding: 3cqw 5cqw 4cqw 24cqw;
+  background: #e6dbc1;
+  color: #2b2116;
+  text-shadow: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+/* Over an old name printed on a Russian face: only the name line is covered, the quote stays. */
+.art-name.over-print.renamed {
+  top: 76.8%;
+  bottom: auto;
+  height: 9%;
+  padding: 0 3cqw 0 24cqw;
+  background: #d5cfc4;
+  box-shadow: 0 0 1.2cqw 0.8cqw #d5cfc4;
+  color: #2e2a25;
+  font-size: 7.6cqw;
+  line-height: 1.05;
+}
 
 /* Glow colours — the same accents as the board lanes. */
 .inspect-face { --card-accent: #8a9bb0; }
@@ -2465,13 +2488,45 @@ img.meta-avatar.avatar-img {
   box-shadow: 0 0 0 3px rgba(224, 197, 106, 0.4), 0 0 12px 3px var(--card-glow), 0 10px 24px rgba(0, 0, 0, 0.45);
 }
 
-.battlefield .gwent-card.has-art { --card-h: 90px; margin: 0 2px; }
+/* Board rows: a card is as tall as its row (minus room for the glow), so it is never cut off,
+   whatever the screen height and whichever row it is in. When a row fills up, cards slide over
+   each other (as in TW3) instead of scrolling; --n is the number of cards in the row. */
+.combat-row { grid-template-rows: minmax(0, 1fr); }
+.combat-row .card-row {
+  --gap: 4px;
+  container-type: size;
+  gap: var(--gap);
+  padding: 0 5px;
+  overflow: hidden;
+}
+.battlefield .gwent-card.has-art { --card-h: calc(100cqh - 6px); }
+.battlefield .card-row .gwent-card:not(.has-art) {
+  height: min(90px, calc(100cqh - 6px));
+  min-height: 0;
+  max-height: none;
+}
+.combat-row .card-row > .gwent-card + .gwent-card,
+.hand-panel .card-row.hand > .gwent-card + .gwent-card {
+  margin-left: calc(-1 * max(0px, (var(--n, 1) * (var(--card-w, 84px) + var(--gap)) - var(--gap) - 100cqw) / max(var(--n, 1) - 1, 1)));
+}
+.combat-row .card-row > .gwent-card:hover,
+.hand-panel .card-row.hand > .gwent-card:hover,
+.hand-panel .card-row.hand > .gwent-card.selected { z-index: 3; }
+
+.hand-panel .card-row.hand {
+  --gap: 6px;
+  container-type: inline-size;
+  gap: var(--gap);
+  padding: 14px 5px 3px;
+  margin-top: -6px; /* the buttons above keep their own spacing; the extra top room is for the lifted card */
+  overflow: visible;
+}
 .hand-panel .gwent-card.has-art { --card-h: 128px; }
 .pending-targets .gwent-card.has-art { --card-h: 104px; }
-.hand-panel .card-row.hand:has(.has-art) { padding: 4px 4px 2px; }
 @media (max-height: 780px) {
   .gwent-card.has-art { --card-h: 84px; }
-  .battlefield .gwent-card.has-art { --card-h: 80px; }
+  .combat-row { padding-block: 1px; }
+  .hand-panel .card-row.hand { padding-top: 10px; }
   .hand-panel .gwent-card.has-art,
   .pending-targets .gwent-card.has-art { --card-h: 92px; }
 }
@@ -2481,8 +2536,40 @@ img.meta-avatar.avatar-img {
     width: var(--card-w) !important;
     min-height: var(--card-h) !important;
   }
-  .battlefield .gwent-card.has-art { --card-h: 72px; }
   .hand-panel .gwent-card.has-art { --card-h: 96px; }
+
+  /* Phones: three columns do not fit, so the rows get the full width next to a slim player
+     column, and the piles and inspect panel go underneath; the page scrolls instead. */
+  .game-shell:has(.board) { height: auto; max-height: none; overflow: visible; }
+  .board { overflow: visible; grid-template-rows: auto auto; }
+  .board-main { min-height: 0; }
+  .battlefield.tw3 { flex: 0 0 auto; }
+  .battlefield.tw3 {
+    grid-template-columns: 64px minmax(0, 1fr);
+    grid-template-rows: auto auto auto;
+    overflow: visible;
+  }
+  .battlefield.tw3 .right-col {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.35rem;
+  }
+  .battlefield.tw3 .right-col .card-inspect {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    height: 260px;
+  }
+  .battlefield.tw3 .meta-col { padding: 0.25rem 0.15rem; min-width: 0; }
+  .combat-row {
+    grid-template-columns: 26px 18px minmax(0, 1fr);
+    gap: 0.2rem;
+    height: 74px;
+    flex: 0 0 auto;
+  }
+  .combat-row .row-score { width: 26px; height: 26px; font-size: 0.8rem; }
+  .combat-row .horn-slot { width: 18px; height: 26px; }
 }
 
 /* Inspect panel: the card big, glowing in its row colour, the description underneath.

@@ -102,7 +102,7 @@
                 @foreach (var card in PoolCards)
                 {
                     var remaining = Decks.RemainingCopies(_faction, card.Name, _cardIds);
-                    var art = CardArt.Url(card.Id, card.Name);
+                    var art = CardArt.Url(card.Id, card.Name, Loc.Language);
                     var shownName = Loc.CardName(card.Name);
                     <button type="button"
                             class="pool-card @(PoolCardClass(card)) @(remaining <= 0 ? "in-deck-full" : "") @(art is null ? "" : "has-art") @(art is not null && CardArt.IsPlainArt(card.Id, card.Name) ? "art-full" : "")"
@@ -118,8 +118,12 @@
                                     <span class="art-strength">@card.Strength</span>
                                 }
                                 <span class="pool-left">+@remaining</span>
+                                @if (CardArt.NamePlate(card.Id, card.Name, Loc.Language) is { Length: > 0 } plate)
+                                {
+                                    <span class="art-name @plate">@shownName</span>
+                                }
                             </span>
-                            @if (shownName != card.Name || CardArt.IsPlainArt(card.Id, card.Name))
+                            @if (CardArt.IsPlainArt(card.Id, card.Name))
                             {
                                 <span class="card-name">@shownName</span>
                             }

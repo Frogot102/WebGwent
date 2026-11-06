@@ -1,17 +1,40 @@
 using WebGwent.Game.Models;
 using WebGwent.Game.Services;
+using WebGwent.Server.Localization;
 
 namespace WebGwent.Server.Services;
 
 /// <summary>
-/// Card pictures in wwwroot/img/cards: The Witcher 3 Gwent card faces from the Witcher Wiki
-/// (witcher.fandom.com), scaled to 260 px and shown whole. Coral and Nilfgaardian Knight have no
-/// TW3 face there, so they use their standalone Gwent art. Custom cards have no picture and keep
-/// the plain frame.
+/// Card pictures in wwwroot/img/cards: The Witcher 3 Gwent card faces, scaled to 260 px and shown
+/// whole — English faces from the Witcher Wiki (witcher.fandom.com) and, in img/cards/ru under the
+/// same names, the Russian faces from the Russian Witcher Wiki (witcher.fandom.com/ru). Coral and
+/// Nilfgaardian Knight have no TW3 face, so they use their standalone Gwent art in both languages.
+/// Custom cards have no picture and keep the plain frame.
 /// </summary>
 public static class CardArt
 {
     private const string Folder = "img/cards/";
+    private const string RussianFolder = "img/cards/ru/";
+
+    /// <summary>
+    /// Cards with no Russian TW3 face on the Russian wiki (the wiki's Siegemaster page shows the
+    /// Steel-Forged face): they keep the English face with the Russian name laid over it.
+    /// </summary>
+    private static readonly HashSet<string> EnglishOnly = ["schirru", "foltest-the-siegemaster"];
+
+    /// <summary>
+    /// Russian faces made before TW3 patch 4.04, which still print the card's old name (Василиск,
+    /// Лучник Бурой Хоругви, Вампиры: брукса, the swapped Eredin titles …): the current name is laid
+    /// over the printed one.
+    /// </summary>
+    private static readonly HashSet<string> RenamedInRussian =
+    [
+        "black-infantry-archer-1", "black-infantry-archer-2", "bovine-defense-force", "clan-dimun-pirate",
+        "cockatrice", "crinfrid-reavers-dragon-hunter", "eredin-bringer-of-death",
+        "eredin-commander-of-the-red-riders", "eredin-destroyer-of-worlds", "eredin-king-of-the-wild-hunt",
+        "vampire-bruxa", "vampire-ekimmara", "vampire-fleder", "vampire-garkain", "vampire-katakan",
+        "vrihedd-brigade-recruit", "vrihedd-brigade-veteran-1", "vrihedd-brigade-veteran-2"
+    ];
 
     /// <summary>Plain illustrations: no TW3 frame, so no printed strength either.</summary>
     private static readonly HashSet<string> FullArt = ["coral", "nilfgaardian-knight"];
@@ -291,8 +314,28 @@ public static class CardArt
         _ => ByDefinitionId.GetValueOrDefault(definitionId)
     };
 
-    public static string? Url(string definitionId, string name) =>
-        Key(definitionId, name) is { } key ? Folder + key + ".webp" : null;
+    /// <summary>The card face in the site's language: the Russian TW3 face in Russian, the English one otherwise.</summary>
+    public static string? Url(string definitionId, string name, AppLanguage language) =>
+        Key(definitionId, name) is not { } key ? null
+        : language == AppLanguage.Ru && !EnglishOnly.Contains(key) && !FullArt.Contains(key) ? RussianFolder + key + ".webp"
+        : Folder + key + ".webp";
+
+    /// <summary>
+    /// CSS classes of the name plate drawn on the picture, or null when the picture already prints the
+    /// card's current name in the site's language: "" for a bare illustration (a caption at the
+    /// bottom), "over-print" over a face printed in the other language, "over-print renamed" over the
+    /// old name printed on a Russian face.
+    /// </summary>
+    public static string? NamePlate(string definitionId, string name, AppLanguage language) =>
+        Key(definitionId, name) switch
+        {
+            null => null,
+            string key when FullArt.Contains(key) => "",
+            _ when language != AppLanguage.Ru => null,
+            string key when EnglishOnly.Contains(key) => "over-print",
+            string key when RenamedInRussian.Contains(key) => "over-print renamed",
+            _ => null
+        };
 
     /// <summary>True for a plain illustration: no printed frame, strength or name on the picture.</summary>
     public static bool IsPlainArt(string definitionId, string name) =>
