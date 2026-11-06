@@ -20,10 +20,10 @@
             {
                 <span class="art-strength @CardArt.StrengthTrend(Card)">@Card.CurrentStrength</span>
             }
-            @if (CardArt.IsPlainArt(Card.DefinitionId, Card.Name))
+            @if (CardArt.NamePlate(Card.DefinitionId, Card.Name, Loc.Language) is { } plate)
             {
-                @* A bare illustration without the printed frame, so its name is not on it. *@
-                <span class="art-name">@Loc.CardName(Card.Name)</span>
+                @* The picture does not print the card's current name in this language. *@
+                <span class="art-name @plate">@Loc.CardName(Card.Name)</span>
             }
         </span>
     }
@@ -59,7 +59,7 @@
     [Parameter] public bool Dimmed { get; set; }
     [Parameter] public EventCallback<CardView> OnSelected { get; set; }
 
-    private string? ArtUrl => Card is null ? null : CardArt.Url(Card.DefinitionId, Card.Name);
+    private string? ArtUrl => Card is null ? null : CardArt.Url(Card.DefinitionId, Card.Name, Loc.Language);
 
     private string Tooltip => Card is null
         ? ""
