@@ -103,27 +103,42 @@
                 {
                     var remaining = Decks.RemainingCopies(_faction, card.Name, _cardIds);
                     var art = CardArt.Url(card.Id, card.Name);
+                    var shownName = Loc.CardName(card.Name);
                     <button type="button"
-                            class="pool-card @(PoolCardClass(card)) @(remaining <= 0 ? "in-deck-full" : "") @(art is null ? "" : "has-art " + CardArt.CropClass(card.Id, card.Name, card.Type, card.IsHero))"
+                            class="pool-card @(PoolCardClass(card)) @(remaining <= 0 ? "in-deck-full" : "") @(art is null ? "" : "has-art") @(art is not null && CardArt.IsPlainArt(card.Id, card.Name) ? "art-full" : "")"
                             disabled="@(remaining <= 0)"
                             @onclick="() => AddCard(card.Name)"
-                            title="@($"{Loc.CardName(card.Name)} — {Loc.Abilities(card.Abilities)}")">
+                            title="@($"{shownName} — {Loc.Abilities(card.Abilities)}")">
                         @if (art is not null)
                         {
-                            <span class="card-art" style="background-image: url('@art')" aria-hidden="true"></span>
-                        }
-                        <span class="pool-top">
-                            <span class="strength">@(card.Type == CardType.Unit ? card.Strength.ToString() : "★")</span>
-                            <span class="pool-left">+@remaining</span>
-                        </span>
-                        <span class="card-name">@Loc.CardName(card.Name)</span>
-                        <span class="card-meta">
-                            @(card.Type == CardType.Unit ? Loc.Row(card.Row) : Loc.T("builder.special"))
-                            @if (card.Abilities.Count > 0)
+                            @* The printed face already shows strength, row, abilities and the Hero emblem. *@
+                            <span class="card-face" style="background-image: url('@art')">
+                                @if (CardArt.IsPlainArt(card.Id, card.Name) && card.Type == CardType.Unit)
+                                {
+                                    <span class="art-strength">@card.Strength</span>
+                                }
+                                <span class="pool-left">+@remaining</span>
+                            </span>
+                            @if (shownName != card.Name || CardArt.IsPlainArt(card.Id, card.Name))
                             {
-                                <span> · @Loc.Abilities(card.Abilities.Where(a => a != Ability.None).Take(1))</span>
+                                <span class="card-name">@shownName</span>
                             }
-                        </span>
+                        }
+                        else
+                        {
+                            <span class="pool-top">
+                                <span class="strength">@(card.Type == CardType.Unit ? card.Strength.ToString() : "★")</span>
+                                <span class="pool-left">+@remaining</span>
+                            </span>
+                            <span class="card-name">@shownName</span>
+                            <span class="card-meta">
+                                @(card.Type == CardType.Unit ? Loc.Row(card.Row) : Loc.T("builder.special"))
+                                @if (card.Abilities.Count > 0)
+                                {
+                                    <span> · @Loc.Abilities(card.Abilities.Where(a => a != Ability.None).Take(1))</span>
+                                }
+                            </span>
+                        }
                     </button>
                 }
             </div>
@@ -235,7 +250,7 @@
             parts.Add("special");
         else if (card.Type == CardType.Unit)
         {
-            parts.Add(card.Row switch
+            parts.Add(card.Abilities.Contains(Ability.Agile) ? "row-agile" : card.Row switch
             {
                 CombatRow.Melee => "row-melee",
                 CombatRow.Ranged => "row-ranged",

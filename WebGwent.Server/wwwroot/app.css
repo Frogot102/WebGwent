@@ -2351,87 +2351,199 @@ img.meta-avatar.avatar-img {
 }
 
 /* ── Card art ───────────────────────────────────────────────────────────────
-   Pictures are whole TW3 card faces (wwwroot/img/cards). They are cropped to the
-   illustration: the printed strength/banner strip on the left and the name plate at
-   the bottom stay out of view, and the game's own strength, name and chips sit on top. */
-.card-art,
-.inspect-art {
+   Cards with a picture show the whole TW3 card face (wwwroot/img/cards, 377:710):
+   strength, row, abilities, name and the Hero emblem are printed on it. Only the live
+   strength is drawn over the printed circle, and the combat row (or the kind of special
+   card) is told by the card's glow. */
+.card-face {
+  display: block;
+  position: relative;
+  container-type: inline-size;
   background-color: #0c0f14;
   background-repeat: no-repeat;
-  background-size: 142% auto;
-  background-position: 95% 7%;
+  background-position: center;
+  background-size: 100% 100%;
 }
-.art-leader .card-art,
-.inspect-art.art-leader { background-size: 112% auto; background-position: 50% 8%; }
-.art-hero .card-art,
-.inspect-art.art-hero { background-size: 150% auto; background-position: 100% 12%; }
-.art-full .card-art,
-.inspect-art.art-full { background-size: cover; background-position: 50% 18%; }
+.art-full .card-face,
+.card-face.art-full { background-size: cover; background-position: 50% 30%; }
 
-.gwent-card.has-art,
-.pool-card.has-art { position: relative; overflow: hidden; background: #0c0f14; }
-.gwent-card.has-art .card-art,
-.pool-card.has-art .card-art {
+/* Live strength, laid over the circle printed in the top-left corner. */
+.art-strength {
   position: absolute;
-  inset: 0;
-  z-index: 0;
-}
-.gwent-card.has-art .card-art::after,
-.pool-card.has-art .card-art::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(180deg, rgba(0,0,0,0.35) 0, transparent 22%, transparent 56%, rgba(6,8,12,0.9) 100%);
-}
-.gwent-card.has-art > :not(.card-art),
-.pool-card.has-art > :not(.card-art) { position: relative; z-index: 1; }
-.gwent-card.has-art::before,
-.gwent-card.has-art::after { z-index: 2; }
-
-.gwent-card.has-art .strength {
-  display: inline-grid;
+  left: 1cqw;
+  top: 0.9cqw;
+  width: 26cqw;
+  height: 26cqw;
+  display: grid;
   place-items: center;
-  min-width: 1.55em;
-  height: 1.55em;
-  padding: 0 0.15em;
-  border-radius: 999px;
-  background: radial-gradient(circle at 35% 30%, #3a3428, #120e0a);
-  border: 1px solid var(--card-accent, var(--gold));
-  color: #f3e6c0;
+  border-radius: 50%;
+  background: radial-gradient(circle at 42% 38%, #fffaf0 0, #ece4d2 60%, #d2c7ae 100%);
+  box-shadow: 0 0 0 0.7cqw rgba(28, 20, 10, 0.7);
+  color: #16110a;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 15cqw;
+  font-variant-numeric: tabular-nums;
   line-height: 1;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.6);
+  pointer-events: none;
 }
-.gwent-card.hero.has-art .strength { border-color: var(--gold); color: var(--gold-bright, #f0d78a); }
-.gwent-card.has-art .card-name {
-  margin-top: auto;
+.art-strength.buffed { color: #1d7a2b; }
+.art-strength.debuffed { color: #b3261e; }
+/* A Hero's number sits on the bigger gold emblem; only drawn when it differs from it. */
+.hero .art-strength {
+  left: 0.4cqw;
+  top: 0.4cqw;
+  width: 30cqw;
+  height: 30cqw;
+  background: radial-gradient(circle at 40% 35%, #3a3022, #0f0c08);
+  box-shadow: 0 0 0 0.9cqw #b8963e;
   color: #f6ecd2;
-  text-shadow: 0 1px 2px #000, 0 0 6px rgba(0,0,0,0.8);
+  font-size: 16cqw;
+}
+/* Name plate for the two bare illustrations that have no printed frame. */
+.art-name {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 14cqw 5cqw 5cqw;
+  background: linear-gradient(180deg, transparent, rgba(6, 8, 12, 0.92) 55%);
+  color: #f6ecd2;
+  font-size: max(11cqw, 0.55rem);
+  font-weight: 700;
+  line-height: 1.15;
+  text-align: center;
+  text-shadow: 0 1px 2px #000;
+  display: -webkit-box;
   -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  pointer-events: none;
 }
-.gwent-card.has-art .ability-chips { margin-top: 0; }
-.gwent-card.has-art .chip { background: rgba(0,0,0,0.6); color: #e6dcc4; }
-.battlefield .gwent-card.has-art .card-name { -webkit-line-clamp: 1; }
+@container (max-width: 56px) { .art-name { display: none; } }
 
-.pool-card.has-art { min-height: 150px; }
-.pool-card.has-art .strength {
-  color: #f3e6c0;
-  text-shadow: 0 1px 2px #000, 0 0 6px rgba(0,0,0,0.85);
-}
-.pool-card.has-art .pool-left { color: #f3e6c0; text-shadow: 0 1px 2px #000; }
-.pool-card.has-art .card-name {
-  margin-top: auto;
-  color: #f6ecd2;
-  text-shadow: 0 1px 2px #000, 0 0 6px rgba(0,0,0,0.8);
-}
-.pool-card.has-art .card-meta { color: #cfc4a8; }
+/* Glow colours — the same accents as the board lanes. */
+.inspect-face { --card-accent: #8a9bb0; }
+.inspect-face.row-melee { --card-accent: #c45a4a; }
+.inspect-face.row-ranged { --card-accent: #5aaa6a; }
+.inspect-face.row-siege { --card-accent: #5a8ec8; }
+.inspect-face.row-agile { --card-accent: #c9a24a; }
+.inspect-face.special-artifact { --card-accent: #9b6fd4; }
+.inspect-face.special-weather { --card-accent: #6ec4e8; }
+.inspect-face.special-horn { --card-accent: #d4a84a; }
+.inspect-face.special-decoy { --card-accent: #b07ad4; }
+.inspect-face.special-scorch { --card-accent: #e07840; }
+.inspect-face.leader { --card-accent: #e0c56a; }
+.gwent-card.has-art,
+.inspect-face { --card-glow: color-mix(in srgb, var(--card-accent) 62%, transparent); }
 
-.inspect-art {
-  width: 100%;
-  aspect-ratio: 5 / 4;
-  max-height: 11rem;
+.gwent-card.has-art {
+  --card-h: 110px;
+  --card-w: calc(var(--card-h) * 377 / 710);
+  width: var(--card-w);
+  height: var(--card-h);
+  min-height: var(--card-h);
+  max-height: var(--card-h);
+  flex: 0 0 var(--card-w);
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: #0c0f14;
+  box-shadow: 0 0 0 2px var(--card-accent), 0 0 9px 1px var(--card-glow);
+}
+.gwent-card.has-art .card-face { position: absolute; inset: 0; }
+.gwent-card.has-art::before { display: none; }
+.gwent-card.hero.has-art:not(.just-played)::after { display: none; }
+.gwent-card.just-played.has-art::after { top: auto; bottom: 0.2rem; right: 0.2rem; }
+.gwent-card.has-art:hover:not(:disabled) {
+  box-shadow: 0 0 0 2px var(--card-accent), 0 0 14px 3px var(--card-glow), 0 8px 18px rgba(0, 0, 0, 0.45);
+}
+.hand-panel .gwent-card.has-art.selected {
+  box-shadow: 0 0 0 2px var(--gold), 0 0 16px 4px var(--card-glow), 0 12px 22px rgba(0, 0, 0, 0.5);
+}
+.gwent-card.has-art.just-played {
+  box-shadow: 0 0 0 3px rgba(224, 197, 106, 0.4), 0 0 12px 3px var(--card-glow), 0 10px 24px rgba(0, 0, 0, 0.45);
+}
+
+.battlefield .gwent-card.has-art { --card-h: 90px; margin: 0 2px; }
+.hand-panel .gwent-card.has-art { --card-h: 128px; }
+.pending-targets .gwent-card.has-art { --card-h: 104px; }
+.hand-panel .card-row.hand:has(.has-art) { padding: 4px 4px 2px; }
+@media (max-height: 780px) {
+  .gwent-card.has-art { --card-h: 84px; }
+  .battlefield .gwent-card.has-art { --card-h: 80px; }
+  .hand-panel .gwent-card.has-art,
+  .pending-targets .gwent-card.has-art { --card-h: 92px; }
+}
+@media (max-width: 768px) {
+  .gwent-card.has-art,
+  .hand .gwent-card.has-art {
+    width: var(--card-w) !important;
+    min-height: var(--card-h) !important;
+  }
+  .battlefield .gwent-card.has-art { --card-h: 72px; }
+  .hand-panel .gwent-card.has-art { --card-h: 96px; }
+}
+
+/* Inspect panel: the card big, glowing in its row colour, the description underneath.
+   The card takes about half the panel height so the description stays in view. */
+.card-inspect { container-type: size; }
+.inspect-face {
+  --face-h: clamp(120px, 46cqh, 290px);
   flex: 0 0 auto;
-  border-radius: 4px;
-  border: 1px solid rgba(201, 162, 39, 0.45);
-  box-shadow: inset 0 0 18px rgba(0,0,0,0.55);
+  height: var(--face-h);
+  width: calc(var(--face-h) * 377 / 710);
+  margin: 0.2rem auto 0.15rem;
+  border-radius: 8px;
+  box-shadow: 0 0 0 2px var(--card-accent), 0 0 16px 2px var(--card-glow), 0 10px 24px rgba(0, 0, 0, 0.55);
 }
-.inspect-card.hero .inspect-art { border-color: var(--gold); }
+.inspect-body { display: flex; flex-direction: column; gap: 0.4rem; }
+.inspect-power {
+  margin: 0;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+.inspect-power.buffed { color: #7fd38a; }
+.inspect-power.debuffed { color: #ef7d70; }
+
+/* Deck builder pool: the whole face, how many copies are left in its corner. */
+.pool-grid { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); }
+.pool-card.row-agile { --pool-accent: #c9a24a; }
+.pool-card.has-art {
+  min-height: 0;
+  padding: 0;
+  gap: 0.3rem;
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  align-items: stretch;
+}
+.pool-card.has-art .card-face {
+  width: 100%;
+  aspect-ratio: 377 / 710;
+  border-radius: 6px;
+  box-shadow: 0 0 0 2px var(--pool-accent), 0 0 9px 1px color-mix(in srgb, var(--pool-accent) 55%, transparent);
+  transition: box-shadow 0.15s ease;
+}
+.pool-card.has-art:hover:not(:disabled) .card-face {
+  box-shadow: 0 0 0 2px var(--gold), 0 0 14px 3px color-mix(in srgb, var(--pool-accent) 65%, transparent);
+}
+.pool-card.has-art .pool-left {
+  position: absolute;
+  right: 3cqw;
+  top: 3cqw;
+  padding: 0.1rem 0.35rem;
+  border-radius: 999px;
+  background: rgba(10, 8, 6, 0.82);
+  border: 1px solid rgba(224, 197, 106, 0.6);
+  color: #f3e6c0;
+  font-size: 0.7rem;
+}
+.pool-card.has-art .card-name {
+  min-height: 0;
+  text-align: center;
+  font-size: 0.72rem;
+  color: var(--ink);
+}
+.pool-card.has-art.hero:not(:focus-visible) { box-shadow: none; }

@@ -153,36 +153,49 @@
                         <div class="inspect-card faction-@focus.Faction.ToString().ToLowerInvariant() @(focus.IsHero ? "hero" : "") @(focus.Type == CardType.Special ? "special" : "")">
                             @if (CardArt.Url(focus.DefinitionId, focus.Name) is { } focusArt)
                             {
-                                <div class="inspect-art @CardArt.CropClass(focus.DefinitionId, focus.Name, focus.Type, focus.IsHero)"
-                                     style="background-image: url('@focusArt')" aria-hidden="true"></div>
+                                @* The whole card, as in TW3; its live strength is drawn on it. *@
+                                <div class="card-face inspect-face @(CardArt.IsPlainArt(focus.DefinitionId, focus.Name) ? "art-full" : "") @CardArt.GlowClass(focus)"
+                                     style="background-image: url('@focusArt')" role="img" aria-label="@Loc.CardName(focus.Name)">
+                                    @if (CardArt.ShowsStrength(focus))
+                                    {
+                                        <span class="art-strength @CardArt.StrengthTrend(focus)">@focus.CurrentStrength</span>
+                                    }
+                                </div>
                             }
-                            <div class="inspect-banner">
-                                <span class="inspect-strength">@(focus.Type == CardType.Unit ? focus.CurrentStrength.ToString() : "★")</span>
-                                @if (focus.Type == CardType.Unit && focus.Row != CombatRow.None)
-                                {
-                                    <span class="inspect-row">@Loc.Row(focus.Row)</span>
-                                }
-                            </div>
+                            else
+                            {
+                                <div class="inspect-banner">
+                                    <span class="inspect-strength">@(focus.Type == CardType.Unit ? focus.CurrentStrength.ToString() : "★")</span>
+                                </div>
+                            }
                             <div class="inspect-body">
                                 <h3 class="inspect-name">@Loc.CardName(focus.Name)</h3>
-                                <p class="inspect-faction">@Loc.FactionName(focus.Faction)</p>
+                                <p class="inspect-faction">@Loc.FactionName(focus.Faction) · @InspectKind(focus)</p>
+                                @if (focus.Type == CardType.Unit && focus.CurrentStrength != focus.BaseStrength)
+                                {
+                                    <p class="inspect-power @CardArt.StrengthTrend(focus)">@Loc.T("board.inspect.power", focus.CurrentStrength, focus.BaseStrength)</p>
+                                }
+                                @{
+                                    var lines = Loc.InspectLines(focus.Description, focus.Abilities);
+                                }
                                 <div class="inspect-abilities">
-                                    @foreach (var a in focus.Abilities.Where(x => x != Ability.None))
+                                    @foreach (var (title, text) in lines)
                                     {
                                         <div class="inspect-ability">
-                                            <strong>@Loc.Ability(a)</strong>
+                                            @if (title.Length > 0)
+                                            {
+                                                <strong>@title</strong>
+                                            }
+                                            <span>@text</span>
+                                        </div>
+                                    }
+                                    @if (lines.Count == 0 && focus.Type == CardType.Unit)
+                                    {
+                                        <div class="inspect-ability">
+                                            <span>@Loc.T("board.inspect.plain")</span>
                                         </div>
                                     }
                                 </div>
-                                @{
-                                    // One body text: card-specific catalog line wins over generic ability blurbs
-                                    // (e.g. Villentretenmerth Scorch ≠ board-wide Scorch).
-                                    var blurb = Loc.CardDescription(focus.Description, focus.Abilities);
-                                }
-                                @if (!string.IsNullOrEmpty(blurb))
-                                {
-                                    <p class="inspect-desc">@blurb</p>
-                                }
                             </div>
                         </div>
                     }
@@ -682,6 +695,15 @@
         CombatRow.Ranged => Loc.T("row.ranged"),
         CombatRow.Siege => Loc.T("row.siege"),
         _ => ""
+    };
+
+    /// <summary>Row (or kind of card) for the inspect panel — the card face only shows it as an icon.</summary>
+    private string InspectKind(CardView card) => card.Type switch
+    {
+        CardType.Leader => Loc.T("board.leader"),
+        CardType.Special => Loc.T(CardArt.IsWeather(card.Abilities) ? "board.inspect.weather" : "board.inspect.special"),
+        _ when card.Abilities.Contains(Ability.Agile) => Loc.T("board.inspect.agile"),
+        _ => Loc.Row(card.Row)
     };
 
     private string WeatherLabel(WeatherEffect w) => w switch

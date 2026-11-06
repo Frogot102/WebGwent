@@ -231,62 +231,62 @@ public static class CardLocalizer
     private static readonly Dictionary<Ability, (string En, string Ru)> AbilityDescriptions = new()
     {
         [Ability.Hero] = (
-            "Not affected by special cards or abilities.",
-            "Не подвержен действию особых карт и способностей."),
+            "Not affected by weather, Commander's Horn, Morale Boost or Scorch. Cannot be taken back by a Decoy or revived by a Medic.",
+            "На героя не действуют погода, Командирский рог, Моральный подъём и Испепеление. Его нельзя забрать Чучелом или воскресить Медиком."),
         [Ability.Spy] = (
-            "Place on your opponent's battlefield (counts for their score) and draw 2 cards.",
-            "Кладётся на поле противника (идёт в его счёт); вы берёте 2 карты."),
+            "Goes to your opponent's side of the battlefield, where its strength counts for them, and you draw 2 cards from your deck.",
+            "Выходит на сторону противника — его сила идёт в счёт соперника, — а вы берёте 2 карты из своей колоды."),
         [Ability.Medic] = (
-            "Choose one non-Hero card from your discard pile and play it instantly.",
-            "Выберите не-героя из своего сброса и сразу сыграйте его."),
+            "When played, choose a unit from your discard pile and play it at once. Heroes and special cards cannot be revived.",
+            "При розыгрыше выберите отряд из своего сброса и сразу сыграйте его. Героев и особые карты воскресить нельзя."),
         [Ability.TightBond] = (
-            "Place next to a card with the same name to double the strength of both.",
-            "Рядом с картой того же имени удваивает силу обеих."),
+            "Next to cards with the same name, the strength of each is multiplied by the number of such cards in the row.",
+            "Рядом с картами того же имени сила каждой умножается на число таких карт в ряду."),
         [Ability.MoraleBoost] = (
-            "Adds +1 to all units in the row (excluding itself).",
-            "+1 ко всем юнитам в ряду (кроме себя)."),
+            "Adds +1 to every other unit in its row. Heroes are not affected.",
+            "Даёт +1 всем остальным отрядам в своём ряду. На героев не действует."),
         [Ability.Muster] = (
-            "Find any cards with the same name in your deck and play them instantly.",
-            "Достаёт из колоды карты с тем же именем и сразу играет их."),
+            "When played, every card of the same group in your deck comes out onto the battlefield too.",
+            "При розыгрыше все карты той же группы из вашей колоды тоже выходят на поле."),
         [Ability.Agile] = (
-            "Can be placed in either the Close Combat or Ranged Combat row.",
-            "Можно положить в ближний или дальний ряд."),
+            "Can be played in either the Close Combat or the Ranged Combat row.",
+            "Можно сыграть в ближний или дальний ряд — на выбор."),
         [Ability.Decoy] = (
-            "Swap with a non-Hero unit on your side of the battlefield.",
-            "Меняется местами с не-героем на вашей стороне поля."),
+            "Swap with a non-Hero unit on your side: the unit returns to your hand and the Decoy takes its place.",
+            "Меняется местами с не-героем на вашей стороне: отряд возвращается в руку, а Чучело встаёт на его место."),
         [Ability.Scorch] = (
-            "Destroy the strongest non-Hero unit(s) on the battlefield.",
-            "Уничтожает сильнейшего не-героя (или нескольких с равной силой) на поле."),
+            "Destroys the strongest non-Hero unit on the battlefield, on both sides — every one of them if several share that strength.",
+            "Уничтожает сильнейший отряд-не-героя на поле, на обеих сторонах, — всех, если у нескольких одинаковая сила."),
         [Ability.CommandersHorn] = (
-            "Double the strength of all non-Hero units in the selected row.",
-            "Удваивает силу всех не-героев в выбранном ряду."),
+            "Doubles the strength of all non-Hero units in the chosen row. Several horns in one row do not stack.",
+            "Удваивает силу всех не-героев в выбранном ряду. Несколько рогов в одном ряду не складываются."),
         [Ability.WeatherFrost] = (
-            "Sets the strength of all Close Combat units to 1.",
-            "Сила всех юнитов ближнего ряда становится 1."),
+            "Sets the strength of every Close Combat unit on both sides to 1.",
+            "Сила всех отрядов ближнего боя у обоих игроков становится 1."),
         [Ability.WeatherFog] = (
-            "Sets the strength of all Ranged Combat units to 1.",
-            "Сила всех юнитов дальнего ряда становится 1."),
+            "Sets the strength of every Ranged Combat unit on both sides to 1.",
+            "Сила всех отрядов дальнего боя у обоих игроков становится 1."),
         [Ability.WeatherRain] = (
-            "Sets the strength of all Siege units to 1.",
-            "Сила всех осадных юнитов становится 1."),
+            "Sets the strength of every Siege unit on both sides to 1.",
+            "Сила всех осадных отрядов у обоих игроков становится 1."),
         [Ability.WeatherClear] = (
-            "Clears all weather effects.",
-            "Снимает все эффекты погоды."),
+            "Removes every weather effect from the battlefield.",
+            "Убирает с поля все погодные эффекты."),
         [Ability.Berserker] = (
-            "Transforms into a stronger unit when a Mardroeme is played.",
-            "Превращается в более сильного юнита, когда сыгран Мардроеме."),
+            "Transforms into a stronger unit when a Mardroeme affects its row.",
+            "Превращается в более сильного бойца, когда на его ряд действует Мардроеме."),
         [Ability.Mardroeme] = (
-            "Triggers Berserker transformations on the board.",
-            "Запускает превращение берсерков на поле."),
+            "Choose a row: every Berserker in it transforms.",
+            "Выберите ряд: все берсерки в нём превращаются."),
         [Ability.SummonAvenger] = (
-            "When this card is removed from the battlefield, summon a replacement.",
-            "Когда карта покидает поле, призывает замену."),
+            "When this card leaves the battlefield, a stronger replacement takes its place.",
+            "Когда карта покидает поле, на её место приходит более сильная замена."),
         [Ability.WeatherStorm] = (
-            "Sets the strength of all Ranged Combat and Siege units to 1.",
-            "Сила всех юнитов дальнего и осадного рядов становится 1."),
+            "Sets the strength of every Ranged Combat and Siege unit on both sides to 1.",
+            "Сила всех отрядов дальнего боя и осадных отрядов у обоих игроков становится 1."),
         [Ability.ScorchBattlefield] = (
-            "Destroys the strongest non-Hero unit(s) on the battlefield when played.",
-            "При розыгрыше уничтожает сильнейшего не-героя (или нескольких) на поле."),
+            "When played, destroys the strongest non-Hero unit(s) on the battlefield.",
+            "При розыгрыше уничтожает сильнейший отряд-не-героя на поле (или нескольких с равной силой)."),
     };
 
     private static readonly Dictionary<string, string> DescriptionsRu = new(StringComparer.OrdinalIgnoreCase)
@@ -424,6 +424,57 @@ public static class CardLocalizer
             return AbilityDescription(Ability.Hero, language);
 
         return catalogDescription?.Trim() ?? "";
+    }
+
+    /// <summary>Abilities whose general text a card's own catalog line replaces (row Scorch, horn units, avengers…).</summary>
+    private static readonly HashSet<Ability> CardSpecificAbilities =
+    [
+        Ability.Scorch, Ability.ScorchBattlefield, Ability.CommandersHorn, Ability.SummonAvenger,
+        Ability.Decoy, Ability.Mardroeme, Ability.Berserker
+    ];
+
+    /// <summary>
+    /// Everything the inspect panel says about a card: one line per ability, titled with its name.
+    /// The card's own catalog line describes how this particular card uses its ability
+    /// (Villentretenmerth only scorches the enemy's Close Combat row), so it replaces that ability's
+    /// general text; any other catalog line is added untitled unless it repeats an ability.
+    /// </summary>
+    public static IReadOnlyList<(string Title, string Text)> InspectLines(
+        string? catalogDescription, IEnumerable<Ability> abilities, AppLanguage language)
+    {
+        var catalog = string.IsNullOrWhiteSpace(catalogDescription) ? null
+            : language == AppLanguage.Ru && DescriptionsRu.TryGetValue(catalogDescription.Trim(), out var ru) ? ru
+            : catalogDescription.Trim();
+
+        var lines = new List<(string Title, string Text)>();
+        var catalogUsed = false;
+        foreach (var ability in abilities.Where(a => a != Ability.None).Distinct())
+        {
+            var title = AbilityName(ability, language);
+            var text = AbilityDescription(ability, language);
+            if (catalog is not null && !catalogUsed && CardSpecificAbilities.Contains(ability))
+            {
+                text = WithoutTitle(catalog, title);
+                catalogUsed = true;
+            }
+
+            if (text.Length > 0)
+                lines.Add((title, text));
+        }
+
+        if (catalog is not null && !catalogUsed && !lines.Any(l => IsNearDuplicate(catalog, l.Text)))
+            lines.Add(("", catalog));
+        return lines;
+    }
+
+    /// <summary>"Commander's Horn: doubles…" → "doubles…" (capitalised) when shown under that title.</summary>
+    private static string WithoutTitle(string text, string title)
+    {
+        var prefix = title + ":";
+        if (!text.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            return text;
+        var rest = text[prefix.Length..].TrimStart();
+        return rest.Length == 0 ? text : char.ToUpper(rest[0]) + rest[1..];
     }
 
     /// <summary>

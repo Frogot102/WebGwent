@@ -359,6 +359,11 @@ public static class UiStrings
         ["board.power"] = "Power",
         ["board.roundClearing"] = "Clearing the board...",
         ["board.inspectHint"] = "Click a card to inspect",
+        ["board.inspect.power"] = "Strength now {0} — {1} on the card",
+        ["board.inspect.plain"] = "No special abilities.",
+        ["board.inspect.agile"] = "Melee or Ranged",
+        ["board.inspect.special"] = "Special card",
+        ["board.inspect.weather"] = "Weather",
 
         ["row.melee"] = "Melee",
         ["row.ranged"] = "Ranged",
@@ -733,6 +738,11 @@ public static class UiStrings
         ["board.power"] = "Сила",
         ["board.roundClearing"] = "Карты уходят в сброс...",
         ["board.inspectHint"] = "Нажмите на карту, чтобы осмотреть",
+        ["board.inspect.power"] = "Сила сейчас {0} — на карте {1}",
+        ["board.inspect.plain"] = "Особых способностей нет.",
+        ["board.inspect.agile"] = "Ближний или дальний",
+        ["board.inspect.special"] = "Особая карта",
+        ["board.inspect.weather"] = "Погода",
 
         ["row.melee"] = "Ближний",
         ["row.ranged"] = "Дальний",

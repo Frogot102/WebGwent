@@ -13,30 +13,41 @@
         title="@Tooltip">
     @if (ArtUrl is { } art)
     {
-        <span class="card-art" style="background-image: url('@art')" aria-hidden="true"></span>
+        @* The whole card face: name, row, abilities and the Hero emblem are printed on it.
+           Only the live strength is drawn on top (over the printed one); the row shows as the glow. *@
+        <span class="card-face" style="background-image: url('@art')">
+            @if (CardArt.ShowsStrength(Card))
+            {
+                <span class="art-strength @CardArt.StrengthTrend(Card)">@Card.CurrentStrength</span>
+            }
+            @if (CardArt.IsPlainArt(Card.DefinitionId, Card.Name))
+            {
+                @* A bare illustration without the printed frame, so its name is not on it. *@
+                <span class="art-name">@Loc.CardName(Card.Name)</span>
+            }
+        </span>
     }
-    <span class="card-banner">
-        <span class="strength">@(Card.Type == CardType.Unit ? Card.CurrentStrength.ToString() : "★")</span>
-        @if (Card.Type == CardType.Unit)
-        {
-            <span class="row-chip row-chip-@Card.Row.ToString().ToLowerInvariant()">@RowShort(Card.Row)</span>
-        }
-        else if (Card.Type == CardType.Special)
-        {
-            <span class="row-chip special-chip">@SpecialShort</span>
-        }
-    </span>
-    <span class="card-name">@Loc.CardName(Card.Name)</span>
-    <span class="ability-chips">
-        @foreach (var a in Card.Abilities.Where(x => x is not Ability.None and not Ability.Hero).Take(3))
-        {
-            <span class="chip" title="@Loc.Ability(a)">@AbilityShort(a)</span>
-        }
-        @if (Card.IsHero)
-        {
-            <span class="chip hero-chip" title="@Loc.Ability(Ability.Hero)">H</span>
-        }
-    </span>
+    else
+    {
+        <span class="card-banner">
+            <span class="strength">@(Card.Type == CardType.Unit ? Card.CurrentStrength.ToString() : "★")</span>
+            @if (Card.Type == CardType.Special)
+            {
+                <span class="row-chip special-chip">@SpecialShort</span>
+            }
+        </span>
+        <span class="card-name">@Loc.CardName(Card.Name)</span>
+        <span class="ability-chips">
+            @foreach (var a in Card.Abilities.Where(x => x is not Ability.None and not Ability.Hero).Take(3))
+            {
+                <span class="chip" title="@Loc.Ability(a)">@AbilityShort(a)</span>
+            }
+            @if (Card.IsHero)
+            {
+                <span class="chip hero-chip" title="@Loc.Ability(Ability.Hero)">H</span>
+            }
+        </span>
+    }
 </button>
 
 @code {
@@ -72,47 +83,15 @@
             if (ArtUrl is not null)
             {
                 parts.Add("has-art");
-                parts.Add(CardArt.CropClass(Card.DefinitionId, Card.Name, Card.Type, Card.IsHero));
+                if (CardArt.IsPlainArt(Card.DefinitionId, Card.Name)) parts.Add("art-full");
             }
 
-            if (Card.Type == CardType.Unit)
-            {
-                parts.Add("unit");
-                parts.Add(Card.Row switch
-                {
-                    CombatRow.Melee => "row-melee",
-                    CombatRow.Ranged => "row-ranged",
-                    CombatRow.Siege => "row-siege",
-                    CombatRow.None when Card.Abilities.Contains(Ability.Agile) => "row-agile",
-                    _ => "row-melee"
-                });
-            }
-            else if (Card.Type == CardType.Special)
-            {
-                parts.Add("special");
-                parts.Add(SpecialKindClass);
-            }
-            else if (Card.Type == CardType.Leader)
-            {
-                parts.Add("leader");
-            }
+            if (Card.Type == CardType.Unit) parts.Add("unit");
+            else if (Card.Type == CardType.Special) parts.Add("special");
+            // The row (or kind of special) is told by the card's colour — its glow on a picture.
+            parts.Add(CardArt.GlowClass(Card));
 
             return string.Join(' ', parts);
-        }
-    }
-
-    private string SpecialKindClass
-    {
-        get
-        {
-            if (Card is null) return "special-artifact";
-            if (Card.Abilities.Any(a => a is Ability.WeatherFrost or Ability.WeatherFog
-                    or Ability.WeatherRain or Ability.WeatherClear or Ability.WeatherStorm))
-                return "special-weather";
-            if (Card.Abilities.Contains(Ability.Decoy)) return "special-decoy";
-            if (Card.Abilities.Contains(Ability.CommandersHorn)) return "special-horn";
-            if (Card.Abilities.Any(a => a is Ability.Scorch or Ability.ScorchBattlefield)) return "special-scorch";
-            return "special-artifact";
         }
     }
 
@@ -137,14 +116,6 @@
         if (Card is not null && !Disabled)
             await OnSelected.InvokeAsync(Card);
     }
-
-    private string RowShort(CombatRow row) => row switch
-    {
-        CombatRow.Melee => Loc.Language == AppLanguage.Ru ? "Бл" : "M",
-        CombatRow.Ranged => Loc.Language == AppLanguage.Ru ? "Дл" : "R",
-        CombatRow.Siege => Loc.Language == AppLanguage.Ru ? "Ос" : "S",
-        _ => Loc.Language == AppLanguage.Ru ? "Аг" : "A"
-    };
 
     private static string AbilityShort(Ability a) => a switch
     {

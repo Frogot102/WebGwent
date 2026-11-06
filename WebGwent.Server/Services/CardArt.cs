@@ -1,17 +1,19 @@
 using WebGwent.Game.Models;
+using WebGwent.Game.Services;
 
 namespace WebGwent.Server.Services;
 
 /// <summary>
 /// Card pictures in wwwroot/img/cards: The Witcher 3 Gwent card faces from the Witcher Wiki
-/// (witcher.fandom.com), scaled to 260 px. Coral and Nilfgaardian Knight have no TW3 face there,
-/// so they use their standalone Gwent art. Custom cards have no picture and keep the plain frame.
+/// (witcher.fandom.com), scaled to 260 px and shown whole. Coral and Nilfgaardian Knight have no
+/// TW3 face there, so they use their standalone Gwent art. Custom cards have no picture and keep
+/// the plain frame.
 /// </summary>
 public static class CardArt
 {
     private const string Folder = "img/cards/";
 
-    /// <summary>Plain illustrations (no TW3 frame) — cropped differently from the card faces.</summary>
+    /// <summary>Plain illustrations: no TW3 frame, so no printed strength either.</summary>
     private static readonly HashSet<string> FullArt = ["coral", "nilfgaardian-knight"];
 
     private static readonly Dictionary<string, string> ByDefinitionId = new(StringComparer.Ordinal)
@@ -292,14 +294,47 @@ public static class CardArt
     public static string? Url(string definitionId, string name) =>
         Key(definitionId, name) is { } key ? Folder + key + ".webp" : null;
 
+    /// <summary>True for a plain illustration: no printed frame, strength or name on the picture.</summary>
+    public static bool IsPlainArt(string definitionId, string name) =>
+        Key(definitionId, name) is { } key && FullArt.Contains(key);
+
     /// <summary>
-    /// How the picture is cropped: TW3 unit/special face, hero face (bigger strength emblem),
-    /// leader face or plain illustration.
+    /// Whether the live strength is drawn over the picture. TW3 faces print the card's own strength;
+    /// it is redrawn so weather, horns and bonds show on the card. A Hero's emblem is left alone
+    /// unless its strength really changed.
     /// </summary>
-    public static string CropClass(string definitionId, string name, CardType type, bool isHero) =>
-        Key(definitionId, name) is not { } key ? ""
-        : FullArt.Contains(key) ? "art-full"
-        : type == CardType.Leader ? "art-leader"
-        : isHero ? "art-hero"
-        : "art-face";
+    public static bool ShowsStrength(CardView card) =>
+        card.Type == CardType.Unit
+        && (!card.IsHero || card.CurrentStrength != card.BaseStrength || IsPlainArt(card.DefinitionId, card.Name));
+
+    /// <summary>"buffed" / "debuffed" when the live strength differs from the card's own.</summary>
+    public static string StrengthTrend(CardView card) =>
+        card.CurrentStrength > card.BaseStrength ? "buffed"
+        : card.CurrentStrength < card.BaseStrength ? "debuffed"
+        : "";
+
+    /// <summary>
+    /// The colour a card glows with (a CSS class): its combat row for units — gold for Agile,
+    /// which goes to either row — and its kind for special cards.
+    /// </summary>
+    public static string GlowClass(CardView card) => card.Type switch
+    {
+        CardType.Leader => "leader",
+        CardType.Unit when card.Abilities.Contains(Ability.Agile) => "row-agile",
+        CardType.Unit => card.Row switch
+        {
+            CombatRow.Ranged => "row-ranged",
+            CombatRow.Siege => "row-siege",
+            _ => "row-melee"
+        },
+        _ when IsWeather(card.Abilities) => "special-weather",
+        _ when card.Abilities.Contains(Ability.Decoy) => "special-decoy",
+        _ when card.Abilities.Contains(Ability.CommandersHorn) => "special-horn",
+        _ when card.Abilities.Any(a => a is Ability.Scorch or Ability.ScorchBattlefield) => "special-scorch",
+        _ => "special-artifact"
+    };
+
+    public static bool IsWeather(IEnumerable<Ability> abilities) =>
+        abilities.Any(a => a is Ability.WeatherFrost or Ability.WeatherFog or Ability.WeatherRain
+            or Ability.WeatherClear or Ability.WeatherStorm);
 }
