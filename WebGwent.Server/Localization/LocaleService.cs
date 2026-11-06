@@ -84,6 +84,10 @@ public sealed class LocaleService(CustomFactionRegistry customFactions)
 
     public string? ExtraInspectText(string? catalogDescription, IEnumerable<WebGwent.Game.Models.Ability> abilities) =>
         CardLocalizer.ExtraInspectText(catalogDescription, abilities, Language);
+
+    public IReadOnlyList<(string Title, string Text)> InspectLines(
+        string? catalogDescription, IEnumerable<WebGwent.Game.Models.Ability> abilities) =>
+        CardLocalizer.InspectLines(catalogDescription, abilities, Language);
 }
 
 public enum FactionLabel
