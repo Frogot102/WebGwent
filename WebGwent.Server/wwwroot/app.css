@@ -2493,22 +2493,48 @@ img.meta-avatar.avatar-img {
   box-shadow: 0 0 0 3px rgba(224, 197, 106, 0.4), 0 0 12px 3px var(--card-glow), 0 10px 24px rgba(0, 0, 0, 0.45);
 }
 
-/* Board rows: a card is as tall as its row (minus room for the glow), so it is never cut off,
+/* Board rows: a card stands the whole height of its row, from its top edge to its bottom edge,
    whatever the screen height and whichever row it is in. When a row fills up, cards slide over
    each other (as in TW3) instead of scrolling; --n is the number of cards in the row. */
-.combat-row { grid-template-rows: minmax(0, 1fr); }
+.combat-row { grid-template-rows: minmax(0, 1fr); padding-block: 0; }
 .combat-row .card-row {
   --gap: 4px;
   container-type: size;
   gap: var(--gap);
   padding: 0 5px;
+  margin-block: -1px; /* over the row's 1px border, so the cards reach its edges */
+  height: calc(100% + 2px);
   overflow: hidden;
 }
-.battlefield .gwent-card.has-art { --card-h: calc(100cqh - 6px); }
+.battlefield .gwent-card.has-art { --card-h: 100cqh; }
 .battlefield .card-row .gwent-card:not(.has-art) {
-  height: min(90px, calc(100cqh - 6px));
+  height: 100cqh;
   min-height: 0;
   max-height: none;
+}
+/* Nothing may stick out of the row: the coloured ring is drawn inside the card, marks sit on
+   its inner edge, and cards brighten instead of lifting on hover. */
+.battlefield .gwent-card.has-art { isolation: isolate; box-shadow: none; }
+.battlefield .gwent-card.has-art::before {
+  display: block;
+  inset: 0;
+  height: auto;
+  z-index: 1;
+  border-radius: inherit;
+  background: none;
+  box-shadow: inset 0 0 0 2px var(--card-accent), inset 0 0 7px 1px var(--card-glow);
+  pointer-events: none;
+}
+.battlefield .gwent-card:hover:not(:disabled),
+.battlefield .gwent-card.decoy-target:hover { transform: none; }
+.battlefield .gwent-card.has-art:hover:not(:disabled) { box-shadow: none; filter: brightness(1.12); }
+.battlefield .gwent-card.just-played,
+.battlefield .gwent-card.decoy-target { outline-offset: -2px; }
+.battlefield .gwent-card.just-played { animation-name: card-pop-in-row; }
+@keyframes card-pop-in-row {
+  0% { transform: scale(0.8); filter: brightness(1.8); opacity: 0.2; }
+  55% { transform: scale(1); filter: brightness(1.25); opacity: 1; }
+  100% { transform: scale(1); filter: brightness(1); }
 }
 .combat-row .card-row > .gwent-card + .gwent-card,
 .hand-panel .card-row.hand > .gwent-card + .gwent-card {
@@ -2530,7 +2556,6 @@ img.meta-avatar.avatar-img {
 .pending-targets .gwent-card.has-art { --card-h: 104px; }
 @media (max-height: 780px) {
   .gwent-card.has-art { --card-h: 84px; }
-  .combat-row { padding-block: 1px; }
   .hand-panel .card-row.hand { padding-top: 10px; }
   .hand-panel .gwent-card.has-art,
   .pending-targets .gwent-card.has-art { --card-h: 92px; }
