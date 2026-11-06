@@ -102,11 +102,16 @@
                 @foreach (var card in PoolCards)
                 {
                     var remaining = Decks.RemainingCopies(_faction, card.Name, _cardIds);
+                    var art = CardArt.Url(card.Id, card.Name);
                     <button type="button"
-                            class="pool-card @(PoolCardClass(card)) @(remaining <= 0 ? "in-deck-full" : "")"
+                            class="pool-card @(PoolCardClass(card)) @(remaining <= 0 ? "in-deck-full" : "") @(art is null ? "" : "has-art " + CardArt.CropClass(card.Id, card.Name, card.Type, card.IsHero))"
                             disabled="@(remaining <= 0)"
                             @onclick="() => AddCard(card.Name)"
                             title="@($"{Loc.CardName(card.Name)} — {Loc.Abilities(card.Abilities)}")">
+                        @if (art is not null)
+                        {
+                            <span class="card-art" style="background-image: url('@art')" aria-hidden="true"></span>
+                        }
                         <span class="pool-top">
                             <span class="strength">@(card.Type == CardType.Unit ? card.Strength.ToString() : "★")</span>
                             <span class="pool-left">+@remaining</span>

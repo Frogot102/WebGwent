@@ -151,6 +151,11 @@
                     @if (Inspected is { } focus)
                     {
                         <div class="inspect-card faction-@focus.Faction.ToString().ToLowerInvariant() @(focus.IsHero ? "hero" : "") @(focus.Type == CardType.Special ? "special" : "")">
+                            @if (CardArt.Url(focus.DefinitionId, focus.Name) is { } focusArt)
+                            {
+                                <div class="inspect-art @CardArt.CropClass(focus.DefinitionId, focus.Name, focus.Type, focus.IsHero)"
+                                     style="background-image: url('@focusArt')" aria-hidden="true"></div>
+                            }
                             <div class="inspect-banner">
                                 <span class="inspect-strength">@(focus.Type == CardType.Unit ? focus.CurrentStrength.ToString() : "★")</span>
                                 @if (focus.Type == CardType.Unit && focus.Row != CombatRow.None)

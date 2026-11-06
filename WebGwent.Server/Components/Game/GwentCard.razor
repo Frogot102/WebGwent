@@ -11,6 +11,10 @@
         disabled="@Disabled"
         @onclick="OnClick"
         title="@Tooltip">
+    @if (ArtUrl is { } art)
+    {
+        <span class="card-art" style="background-image: url('@art')" aria-hidden="true"></span>
+    }
     <span class="card-banner">
         <span class="strength">@(Card.Type == CardType.Unit ? Card.CurrentStrength.ToString() : "★")</span>
         @if (Card.Type == CardType.Unit)
@@ -44,6 +48,8 @@
     [Parameter] public bool Dimmed { get; set; }
     [Parameter] public EventCallback<CardView> OnSelected { get; set; }
 
+    private string? ArtUrl => Card is null ? null : CardArt.Url(Card.DefinitionId, Card.Name);
+
     private string Tooltip => Card is null
         ? ""
         : $"{Loc.CardName(Card.Name)} ({Loc.FactionName(Card.Faction)}) — {Loc.Abilities(Card.Abilities)}";
@@ -63,6 +69,11 @@
             if (Card.IsHero) parts.Add("hero");
             if (Targetable) parts.Add("decoy-target");
             if (Dimmed) parts.Add("dimmed");
+            if (ArtUrl is not null)
+            {
+                parts.Add("has-art");
+                parts.Add(CardArt.CropClass(Card.DefinitionId, Card.Name, Card.Type, Card.IsHero));
+            }
 
             if (Card.Type == CardType.Unit)
             {

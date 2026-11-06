@@ -2349,3 +2349,89 @@ img.meta-avatar.avatar-img {
   .setup-panel.wide { padding: 1rem; }
   .history-table { font-size: 0.8rem; display: block; overflow-x: auto; }
 }
+
+/* ── Card art ───────────────────────────────────────────────────────────────
+   Pictures are whole TW3 card faces (wwwroot/img/cards). They are cropped to the
+   illustration: the printed strength/banner strip on the left and the name plate at
+   the bottom stay out of view, and the game's own strength, name and chips sit on top. */
+.card-art,
+.inspect-art {
+  background-color: #0c0f14;
+  background-repeat: no-repeat;
+  background-size: 142% auto;
+  background-position: 95% 7%;
+}
+.art-leader .card-art,
+.inspect-art.art-leader { background-size: 112% auto; background-position: 50% 8%; }
+.art-hero .card-art,
+.inspect-art.art-hero { background-size: 150% auto; background-position: 100% 12%; }
+.art-full .card-art,
+.inspect-art.art-full { background-size: cover; background-position: 50% 18%; }
+
+.gwent-card.has-art,
+.pool-card.has-art { position: relative; overflow: hidden; background: #0c0f14; }
+.gwent-card.has-art .card-art,
+.pool-card.has-art .card-art {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+.gwent-card.has-art .card-art::after,
+.pool-card.has-art .card-art::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(0,0,0,0.35) 0, transparent 22%, transparent 56%, rgba(6,8,12,0.9) 100%);
+}
+.gwent-card.has-art > :not(.card-art),
+.pool-card.has-art > :not(.card-art) { position: relative; z-index: 1; }
+.gwent-card.has-art::before,
+.gwent-card.has-art::after { z-index: 2; }
+
+.gwent-card.has-art .strength {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.55em;
+  height: 1.55em;
+  padding: 0 0.15em;
+  border-radius: 999px;
+  background: radial-gradient(circle at 35% 30%, #3a3428, #120e0a);
+  border: 1px solid var(--card-accent, var(--gold));
+  color: #f3e6c0;
+  line-height: 1;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.6);
+}
+.gwent-card.hero.has-art .strength { border-color: var(--gold); color: var(--gold-bright, #f0d78a); }
+.gwent-card.has-art .card-name {
+  margin-top: auto;
+  color: #f6ecd2;
+  text-shadow: 0 1px 2px #000, 0 0 6px rgba(0,0,0,0.8);
+  -webkit-line-clamp: 2;
+}
+.gwent-card.has-art .ability-chips { margin-top: 0; }
+.gwent-card.has-art .chip { background: rgba(0,0,0,0.6); color: #e6dcc4; }
+.battlefield .gwent-card.has-art .card-name { -webkit-line-clamp: 1; }
+
+.pool-card.has-art { min-height: 150px; }
+.pool-card.has-art .strength {
+  color: #f3e6c0;
+  text-shadow: 0 1px 2px #000, 0 0 6px rgba(0,0,0,0.85);
+}
+.pool-card.has-art .pool-left { color: #f3e6c0; text-shadow: 0 1px 2px #000; }
+.pool-card.has-art .card-name {
+  margin-top: auto;
+  color: #f6ecd2;
+  text-shadow: 0 1px 2px #000, 0 0 6px rgba(0,0,0,0.8);
+}
+.pool-card.has-art .card-meta { color: #cfc4a8; }
+
+.inspect-art {
+  width: 100%;
+  aspect-ratio: 5 / 4;
+  max-height: 11rem;
+  flex: 0 0 auto;
+  border-radius: 4px;
+  border: 1px solid rgba(201, 162, 39, 0.45);
+  box-shadow: inset 0 0 18px rgba(0,0,0,0.55);
+}
+.inspect-card.hero .inspect-art { border-color: var(--gold); }
