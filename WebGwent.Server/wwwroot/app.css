@@ -2351,10 +2351,11 @@ img.meta-avatar.avatar-img {
 }
 
 /* ── Card art ───────────────────────────────────────────────────────────────
-   Cards with a picture show the whole TW3 card face (wwwroot/img/cards, 377:710):
-   strength, row, abilities, name and the Hero emblem are printed on it. Only the live
-   strength is drawn over the printed circle, and the combat row (or the kind of special
-   card) is told by the card's glow. */
+   Cards with a picture show the TW3 card face (wwwroot/img/cards, 377:710): strength, row,
+   abilities, name and the Hero emblem are printed on it. In play the name and quote are cut
+   off; the deck builder and the inspect panel show the whole face. Only the live strength is
+   drawn over the printed circle, and the combat row (or the kind of special card) is told by
+   the card's glow. */
 .card-face {
   display: block;
   position: relative;
@@ -2460,9 +2461,11 @@ img.meta-avatar.avatar-img {
 .gwent-card.has-art,
 .inspect-face { --card-glow: color-mix(in srgb, var(--card-accent) 62%, transparent); }
 
+/* In play (board, hand, choices) a card shows its face down to the top of the text box (74.5 %
+   of the face, so 377:529): the name and quote are cut off, the banner and the art stay. */
 .gwent-card.has-art {
   --card-h: 110px;
-  --card-w: calc(var(--card-h) * 377 / 710);
+  --card-w: calc(var(--card-h) * 377 / 529);
   width: var(--card-w);
   height: var(--card-h);
   min-height: var(--card-h);
@@ -2474,7 +2477,9 @@ img.meta-avatar.avatar-img {
   background: #0c0f14;
   box-shadow: 0 0 0 2px var(--card-accent), 0 0 9px 1px var(--card-glow);
 }
-.gwent-card.has-art .card-face { position: absolute; inset: 0; }
+.gwent-card.has-art .card-face { position: absolute; inset: 0; border-radius: inherit; }
+.card-face.board-face { background-size: 100% calc(100% / 0.745); background-position: 0 0; }
+.art-full .card-face.board-face { background-size: cover; background-position: 50% 30%; }
 .gwent-card.has-art::before { display: none; }
 .gwent-card.hero.has-art:not(.just-played)::after { display: none; }
 .gwent-card.just-played.has-art::after { top: auto; bottom: 0.2rem; right: 0.2rem; }

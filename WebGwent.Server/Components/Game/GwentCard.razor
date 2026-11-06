@@ -13,17 +13,13 @@
         title="@Tooltip">
     @if (ArtUrl is { } art)
     {
-        @* The whole card face: name, row, abilities and the Hero emblem are printed on it.
-           Only the live strength is drawn on top (over the printed one); the row shows as the glow. *@
-        <span class="card-face" style="background-image: url('@art')">
+        @* The card face without its name and quote (as on the TW3 board): strength, row, abilities
+           and the Hero emblem stay. Only the live strength is drawn on top (over the printed one).
+           The whole face, with the name, is shown in the inspect panel and the deck builder. *@
+        <span class="card-face board-face" style="background-image: url('@art')">
             @if (CardArt.ShowsStrength(Card))
             {
                 <span class="art-strength @CardArt.StrengthTrend(Card)">@Card.CurrentStrength</span>
-            }
-            @if (CardArt.NamePlate(Card.DefinitionId, Card.Name, Loc.Language) is { } plate)
-            {
-                @* The picture does not print the card's current name in this language. *@
-                <span class="art-name @plate">@Loc.CardName(Card.Name)</span>
             }
         </span>
     }
