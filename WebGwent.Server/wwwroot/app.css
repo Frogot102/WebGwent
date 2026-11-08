@@ -2664,3 +2664,47 @@ img.meta-avatar.avatar-img {
   color: var(--ink);
 }
 .pool-card.has-art.hero:not(:focus-visible) { box-shadow: none; }
+
+/* ── Match screen: more room for the battlefield ────────────────────────────
+   The language switch moves into the round bar (the separate bar above it is hidden), the round
+   bar is a single slim line, and the hand puts its buttons in a column beside the cards instead
+   of above them, with smaller cards. Everything saved goes to the battlefield rows. */
+.game-shell:has(.board) { padding-top: 0.3rem; padding-bottom: 0.4rem; }
+.game-shell:has(.board) > .game-lang-bar { display: none; }
+.board { gap: 0.3rem; }
+.board-main { gap: 0.3rem; }
+.board-topbar {
+  gap: 0.4rem 0.9rem;
+  padding: 0.15rem 0.6rem;
+  font-size: 0.9rem;
+}
+.board-topbar .weather-bar .wx { padding: 0.1rem 0.55rem; font-size: 0.72rem; }
+.topbar-end { display: flex; align-items: center; gap: 0.75rem; flex: 0 0 auto; }
+.board-topbar .lang-btn { padding: 0.2rem 0.5rem; font-size: 0.7rem; }
+
+@media (min-width: 769px) {
+  .board-topbar { flex-wrap: nowrap; }
+  .hand-panel {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 0.55rem;
+    padding: 0.25rem 0.45rem;
+  }
+  .hand-actions {
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    gap: 0.3rem;
+    margin: 0;
+    min-width: 7.5rem;
+  }
+  .hand-actions .btn { padding: 0.3rem 0.6rem; font-size: 0.85rem; white-space: nowrap; }
+  .hand-actions label { display: grid; gap: 0.15rem; font-size: 0.75rem; }
+  .hand-panel .card-row.hand { margin-top: 0; padding: 10px 5px 2px; }
+  .hand-panel .gwent-card.has-art { --card-h: 100px; }
+}
+@media (min-width: 769px) and (max-height: 780px) {
+  .hand-panel .gwent-card.has-art { --card-h: 84px; }
+  .hand-panel .card-row.hand { padding-top: 8px; }
+}
