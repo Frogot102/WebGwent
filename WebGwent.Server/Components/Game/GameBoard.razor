@@ -46,7 +46,10 @@
                 <span>@Loc.T("board.waiting", View.Opponent.Name)</span>
             }
         </div>
-        <a class="link-back" href="/home">@Loc.T("board.menu")</a>
+        <div class="topbar-end">
+            <LanguageSwitcher />
+            <a class="link-back" href="/home">@Loc.T("board.menu")</a>
+        </div>
     </div>
 
     @if (!string.IsNullOrEmpty(Error))
