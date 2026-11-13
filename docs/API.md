@@ -19,7 +19,10 @@ dotnet run --project WebGwent.Server
 ```
 
 Откройте UI: http://localhost:5097  
+Swagger (тесты API): http://localhost:5180/swagger  
 Админ: `admin` / `admin123`
+
+В Swagger: `POST /api/auth/login` → скопировать `token` → кнопка Authorize → вставить JWT.
 
 Базовый URL API для UI задаётся в `WebGwent.Server/appsettings.json` → `ApiBaseUrl`.
 

@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi;
 using WebGwent.Api.Accounts;
 using WebGwent.Api.Endpoints;
 using WebGwent.Api.Hubs;
@@ -50,6 +51,33 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     });
 builder.Services.AddAuthorization();
 
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(options =>
+{
+    options.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "WebGwent API",
+        Version = "v1",
+        Description = "REST backend for WebGwent. Authorize with JWT from POST /api/auth/login (admin / admin123)."
+    });
+
+    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Description = "Paste JWT only (Swagger adds Bearer prefix). Get token via /api/auth/login.",
+        Name = "Authorization",
+        In = ParameterLocation.Header,
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT"
+    });
+
+    options.AddSecurityRequirement(document =>
+        new OpenApiSecurityRequirement
+        {
+            [new OpenApiSecuritySchemeReference("Bearer", document)] = []
+        });
+});
+
 builder.Services.AddCors(o => o.AddDefaultPolicy(p =>
     p.WithOrigins(
             builder.Configuration.GetSection("Cors:Origins").Get<string[]>()
@@ -95,11 +123,27 @@ _ = app.Services.GetRequiredService<AccountStore>();
 _ = app.Services.GetRequiredService<InviteStore>();
 _ = app.Services.GetRequiredService<InviteRequestStore>();
 
+if (app.Environment.IsDevelopment() || app.Configuration.GetValue("Swagger:Enabled", true))
+{
+    app.UseSwagger();
+    app.UseSwaggerUI(options =>
+    {
+        options.SwaggerEndpoint("/swagger/v1/swagger.json", "WebGwent API v1");
+        options.DocumentTitle = "WebGwent API";
+        options.DisplayRequestDuration();
+    });
+}
+
 app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
 
-app.MapGet("/", () => Results.Ok(new { service = "WebGwent.Api", hubs = "/hubs/game" }));
+app.MapGet("/", () => Results.Ok(new
+{
+    service = "WebGwent.Api",
+    hubs = "/hubs/game",
+    swagger = "/swagger"
+}));
 app.MapWebGwentApi();
 app.MapHub<GameHub>("/hubs/game");
 
