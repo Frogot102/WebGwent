@@ -1,4 +1,15 @@
 services:
+  db:
+    image: postgres:18
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-postgres}"
+      POSTGRES_DB: webgwent
+    volumes:
+      - webgwent-pg:/var/lib/postgresql/data
+
   api:
     build:
       context: .
@@ -14,8 +25,11 @@ services:
       SeedAdmin__DisplayName: Admin
       Cors__Origins__0: "http://localhost:5097"
       Cors__Origins__1: "http://server:5097"
+      ConnectionStrings__Default: "Host=db;Port=5432;Database=webgwent;Username=postgres;Password=${POSTGRES_PASSWORD:-postgres}"
     volumes:
       - webgwent-data:/app/App_Data
+    depends_on:
+      - db
 
   server:
     build:
@@ -30,3 +44,4 @@ services:
 
 volumes:
   webgwent-data:
+  webgwent-pg:

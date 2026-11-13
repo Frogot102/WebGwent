@@ -1,5 +1,5 @@
-using System.Text.Json;
-using System.Text.Json.Serialization;
+using Microsoft.EntityFrameworkCore;
+using WebGwent.Api.Data;
 using WebGwent.Game.Models;
 
 namespace WebGwent.Api.Accounts;
@@ -8,27 +8,19 @@ public sealed class AccountStore
 {
     private readonly string _dir;
     private readonly string _avatarsDir;
-    private readonly string _accountsPath;
-    private readonly string _matchesPath;
+    private readonly IDbContextFactory<WebGwentDbContext> _dbFactory;
     private readonly object _lock = new();
-    private readonly JsonSerializerOptions _json = new()
-    {
-        WriteIndented = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        Converters = { new JsonStringEnumConverter() }
-    };
 
     private List<PlayerAccount> _accounts = [];
     private List<MatchHistoryEntry> _matches = [];
 
-    public AccountStore(IWebHostEnvironment env, IConfiguration config)
+    public AccountStore(IWebHostEnvironment env, IConfiguration config, IDbContextFactory<WebGwentDbContext> dbFactory)
     {
+        _dbFactory = dbFactory;
         _dir = Path.Combine(env.ContentRootPath, "App_Data");
         _avatarsDir = Path.Combine(_dir, "avatars");
         Directory.CreateDirectory(_dir);
         Directory.CreateDirectory(_avatarsDir);
-        _accountsPath = Path.Combine(_dir, "accounts.json");
-        _matchesPath = Path.Combine(_dir, "matches.json");
         Reload();
         EnsureSeedAdmin(config);
     }
@@ -149,8 +141,9 @@ public sealed class AccountStore
     {
         lock (_lock)
         {
-            _accounts = ReadList<PlayerAccount>(_accountsPath);
-            _matches = ReadList<MatchHistoryEntry>(_matchesPath);
+            using var db = _dbFactory.CreateDbContext();
+            _accounts = db.Accounts.AsNoTracking().ToList();
+            _matches = db.Matches.AsNoTracking().ToList();
         }
     }
 
@@ -519,57 +512,25 @@ public sealed class AccountStore
         return (int)Math.Round(32 * (score - expected));
     }
 
-    private List<T> ReadList<T>(string path)
-    {
-        if (!File.Exists(path)) return [];
-        try
-        {
-            var json = File.ReadAllText(path);
-            return JsonSerializer.Deserialize<List<T>>(json, _json) ?? [];
-        }
-        catch
-        {
-            return [];
-        }
-    }
-
     private void PersistAccounts()
     {
-        var tmp = _accountsPath + ".tmp";
-        File.WriteAllText(tmp, JsonSerializer.Serialize(_accounts, _json));
-        File.Move(tmp, _accountsPath, overwrite: true);
+        using var db = _dbFactory.CreateDbContext();
+        using var tx = db.Database.BeginTransaction();
+        db.Accounts.ExecuteDelete();
+        db.Accounts.AddRange(_accounts.Select(Clone));
+        db.SaveChanges();
+        tx.Commit();
     }
 
     private void PersistMatches()
     {
-        var tmp = _matchesPath + ".tmp";
-        File.WriteAllText(tmp, JsonSerializer.Serialize(_matches, _json));
-        File.Move(tmp, _matchesPath, overwrite: true);
+        using var db = _dbFactory.CreateDbContext();
+        using var tx = db.Database.BeginTransaction();
+        db.Matches.ExecuteDelete();
+        db.Matches.AddRange(_matches.Select(CloneMatch));
+        db.SaveChanges();
+        tx.Commit();
     }
-
-    private static PlayerAccount Clone(PlayerAccount a) => new()
-    {
-        Id = a.Id,
-        Username = a.Username,
-        DisplayName = a.DisplayName,
-        PasswordHash = a.PasswordHash,
-        PasswordSalt = a.PasswordSalt,
-        Rating = a.Rating,
-        FavoriteFaction = a.FavoriteFaction,
-        AvatarId = a.AvatarId,
-        AvatarVersion = a.AvatarVersion,
-        MatchesVsPlayers = a.MatchesVsPlayers,
-        WinsVsPlayers = a.WinsVsPlayers,
-        LossesVsPlayers = a.LossesVsPlayers,
-        DrawsVsPlayers = a.DrawsVsPlayers,
-        MatchesVsBot = a.MatchesVsBot,
-        WinsVsBot = a.WinsVsBot,
-        LossesVsBot = a.LossesVsBot,
-        CreatedAtUtc = a.CreatedAtUtc,
-        LastLoginUtc = a.LastLoginUtc,
-        Role = a.Role,
-        PlusUntilUtc = a.PlusUntilUtc
-    };
 
     private static MatchHistoryEntry CloneMatch(MatchHistoryEntry m) => new()
     {
@@ -596,5 +557,29 @@ public sealed class AccountStore
             OppScore = r.OppScore,
             Result = r.Result
         }).ToList()
+    };
+
+    private static PlayerAccount Clone(PlayerAccount a) => new()
+    {
+        Id = a.Id,
+        Username = a.Username,
+        DisplayName = a.DisplayName,
+        PasswordHash = a.PasswordHash,
+        PasswordSalt = a.PasswordSalt,
+        Rating = a.Rating,
+        FavoriteFaction = a.FavoriteFaction,
+        AvatarId = a.AvatarId,
+        AvatarVersion = a.AvatarVersion,
+        MatchesVsPlayers = a.MatchesVsPlayers,
+        WinsVsPlayers = a.WinsVsPlayers,
+        LossesVsPlayers = a.LossesVsPlayers,
+        DrawsVsPlayers = a.DrawsVsPlayers,
+        MatchesVsBot = a.MatchesVsBot,
+        WinsVsBot = a.WinsVsBot,
+        LossesVsBot = a.LossesVsBot,
+        CreatedAtUtc = a.CreatedAtUtc,
+        LastLoginUtc = a.LastLoginUtc,
+        Role = a.Role,
+        PlusUntilUtc = a.PlusUntilUtc
     };
 }

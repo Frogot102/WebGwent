@@ -1,6 +1,6 @@
 using System.Security.Cryptography;
-using System.Text.Json;
-using System.Text.Json.Serialization;
+using Microsoft.EntityFrameworkCore;
+using WebGwent.Api.Data;
 
 namespace WebGwent.Api.Accounts;
 
@@ -27,21 +27,13 @@ public sealed class InviteRequestRecord
 
 public sealed class InviteRequestStore
 {
-    private readonly string _path;
+    private readonly IDbContextFactory<WebGwentDbContext> _dbFactory;
     private readonly object _lock = new();
-    private readonly JsonSerializerOptions _json = new()
-    {
-        WriteIndented = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        Converters = { new JsonStringEnumConverter() }
-    };
     private List<InviteRequestRecord> _items = [];
 
-    public InviteRequestStore(IWebHostEnvironment env)
+    public InviteRequestStore(IDbContextFactory<WebGwentDbContext> dbFactory)
     {
-        var dir = Path.Combine(env.ContentRootPath, "App_Data");
-        Directory.CreateDirectory(dir);
-        _path = Path.Combine(dir, "invite-requests.json");
+        _dbFactory = dbFactory;
         Reload();
     }
 
@@ -49,19 +41,8 @@ public sealed class InviteRequestStore
     {
         lock (_lock)
         {
-            if (!File.Exists(_path))
-            {
-                _items = [];
-                return;
-            }
-            try
-            {
-                _items = JsonSerializer.Deserialize<List<InviteRequestRecord>>(File.ReadAllText(_path), _json) ?? [];
-            }
-            catch
-            {
-                _items = [];
-            }
+            using var db = _dbFactory.CreateDbContext();
+            _items = db.InviteRequests.AsNoTracking().ToList();
         }
     }
 
@@ -149,9 +130,12 @@ public sealed class InviteRequestStore
 
     private void Persist()
     {
-        var tmp = _path + "." + Convert.ToHexString(RandomNumberGenerator.GetBytes(4)) + ".tmp";
-        File.WriteAllText(tmp, JsonSerializer.Serialize(_items, _json));
-        File.Move(tmp, _path, overwrite: true);
+        using var db = _dbFactory.CreateDbContext();
+        using var tx = db.Database.BeginTransaction();
+        db.InviteRequests.ExecuteDelete();
+        db.InviteRequests.AddRange(_items.Select(Clone));
+        db.SaveChanges();
+        tx.Commit();
     }
 
     private static InviteRequestRecord Clone(InviteRequestRecord i) => new()
