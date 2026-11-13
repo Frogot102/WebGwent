@@ -35,7 +35,7 @@ cp .env.example .env   # задайте JWT_KEY и ADMIN_PASSWORD
 docker compose up --build
 ```
 
-UI: http://localhost:5097 · API: http://localhost:5180  
+UI: http://localhost:5097 · API: http://localhost:5180 · Swagger: http://localhost:5180/swagger  
 Endpoint’ы: [docs/API.md](docs/API.md). Демо к защите: [docs/DEMO.md](docs/DEMO.md).
 
 Тесты:
