@@ -1,6 +1,6 @@
 using System.Security.Cryptography;
-using System.Text.Json;
-using System.Text.Json.Serialization;
+using Microsoft.EntityFrameworkCore;
+using WebGwent.Api.Data;
 
 namespace WebGwent.Api.Accounts;
 
@@ -34,21 +34,13 @@ public sealed class InviteStore
     public const int MaxActiveInvites = 50;
     private const string Alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
-    private readonly string _path;
+    private readonly IDbContextFactory<WebGwentDbContext> _dbFactory;
     private readonly object _lock = new();
-    private readonly JsonSerializerOptions _json = new()
-    {
-        WriteIndented = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        Converters = { new JsonStringEnumConverter() }
-    };
     private List<InviteRecord> _invites = [];
 
-    public InviteStore(IWebHostEnvironment env)
+    public InviteStore(IDbContextFactory<WebGwentDbContext> dbFactory)
     {
-        var dir = Path.Combine(env.ContentRootPath, "App_Data");
-        Directory.CreateDirectory(dir);
-        _path = Path.Combine(dir, "invites.json");
+        _dbFactory = dbFactory;
         Reload();
     }
 
@@ -56,21 +48,8 @@ public sealed class InviteStore
     {
         lock (_lock)
         {
-            if (!File.Exists(_path))
-            {
-                _invites = [];
-                return;
-            }
-
-            try
-            {
-                var raw = File.ReadAllText(_path);
-                _invites = JsonSerializer.Deserialize<List<InviteRecord>>(raw, _json) ?? [];
-            }
-            catch
-            {
-                _invites = [];
-            }
+            using var db = _dbFactory.CreateDbContext();
+            _invites = db.Invites.AsNoTracking().ToList();
         }
     }
 
@@ -168,9 +147,12 @@ public sealed class InviteStore
 
     private void Persist()
     {
-        var tmp = _path + "." + Convert.ToHexString(RandomNumberGenerator.GetBytes(4)) + ".tmp";
-        File.WriteAllText(tmp, JsonSerializer.Serialize(_invites, _json));
-        File.Move(tmp, _path, overwrite: true);
+        using var db = _dbFactory.CreateDbContext();
+        using var tx = db.Database.BeginTransaction();
+        db.Invites.ExecuteDelete();
+        db.Invites.AddRange(_invites.Select(Clone));
+        db.SaveChanges();
+        tx.Commit();
     }
 
     private static string Normalize(string code) =>

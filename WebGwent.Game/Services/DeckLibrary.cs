@@ -23,16 +23,20 @@ public sealed class SavedDeck
 public sealed class DeckLibrary
 {
     private readonly object _lock = new();
-    private readonly string _path;
+    private readonly string? _path;
+    private readonly ICustomDeckPersistence? _persistence;
     private readonly CardCatalog _catalog;
     private List<SavedDeck> _custom = [];
 
-    public DeckLibrary(CardCatalog catalog, string? storagePath = null)
+    public DeckLibrary(CardCatalog catalog, string? storagePath = null, ICustomDeckPersistence? persistence = null)
     {
         _catalog = catalog;
-        _path = storagePath ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "WebGwent", "custom-decks.json");
+        _persistence = persistence;
+        _path = persistence is null
+            ? storagePath ?? Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "WebGwent", "custom-decks.json")
+            : null;
         Load();
     }
 
@@ -185,7 +189,13 @@ public sealed class DeckLibrary
     {
         try
         {
-            if (!File.Exists(_path)) return;
+            if (_persistence is not null)
+            {
+                _custom = _persistence.Load().Where(d => !d.IsPreset).ToList();
+                return;
+            }
+
+            if (_path is null || !File.Exists(_path)) return;
             var json = File.ReadAllText(_path);
             var list = JsonSerializer.Deserialize<List<SavedDeck>>(json, JsonOptions);
             if (list != null)
@@ -199,6 +209,13 @@ public sealed class DeckLibrary
 
     private void Persist()
     {
+        if (_persistence is not null)
+        {
+            _persistence.SaveAll(_custom);
+            return;
+        }
+
+        if (_path is null) return;
         var dir = Path.GetDirectoryName(_path);
         if (!string.IsNullOrEmpty(dir))
             Directory.CreateDirectory(dir);
