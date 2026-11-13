@@ -35,10 +35,13 @@ public sealed class GameSessionManager
     private readonly ConcurrentDictionary<BotDifficulty, BotAI> _bots = new();
     private readonly object _lock = new();
 
-    public GameSessionManager(string? deckStoragePath = null, CardCatalog? catalog = null)
+    public GameSessionManager(
+        string? deckStoragePath = null,
+        CardCatalog? catalog = null,
+        ICustomDeckPersistence? deckPersistence = null)
     {
         _catalog = catalog ?? CardCatalog.LoadEmbedded();
-        _decks = new DeckLibrary(_catalog, deckStoragePath);
+        _decks = new DeckLibrary(_catalog, deckStoragePath, deckPersistence);
         _engine = new RulesEngine();
         _factory = new MatchFactory(_catalog, _engine);
     }
