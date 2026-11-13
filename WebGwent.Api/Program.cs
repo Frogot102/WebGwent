@@ -1,9 +1,11 @@
 using System.Text;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
 using WebGwent.Api.Accounts;
+using WebGwent.Api.Data;
 using WebGwent.Api.Endpoints;
 using WebGwent.Api.Hubs;
 using WebGwent.Api.Services;
@@ -86,6 +88,12 @@ builder.Services.AddCors(o => o.AddDefaultPolicy(p =>
         .AllowAnyMethod()
         .AllowCredentials()));
 
+var connectionString = builder.Configuration.GetConnectionString("Default")
+    ?? "Host=localhost;Port=5432;Database=webgwent;Username=postgres;Password=postgres";
+builder.Services.AddDbContextFactory<WebGwentDbContext>(opt =>
+    opt.UseNpgsql(connectionString));
+builder.Services.AddSingleton<ICustomDeckPersistence, EfCustomDeckPersistence>();
+
 builder.Services.AddSingleton(_ => WebGwent.Game.Catalog.CardCatalog.LoadEmbedded());
 builder.Services.AddSingleton(sp =>
 {
@@ -95,9 +103,9 @@ builder.Services.AddSingleton(sp =>
 });
 builder.Services.AddSingleton(sp =>
 {
-    var env = sp.GetRequiredService<IWebHostEnvironment>();
-    var decksPath = Path.Combine(env.ContentRootPath, "App_Data", "custom-decks.json");
-    return new GameSessionManager(decksPath, sp.GetRequiredService<WebGwent.Game.Catalog.CardCatalog>());
+    var catalog = sp.GetRequiredService<WebGwent.Game.Catalog.CardCatalog>();
+    var decks = sp.GetRequiredService<ICustomDeckPersistence>();
+    return new GameSessionManager(deckStoragePath: null, catalog, decks);
 });
 builder.Services.AddSingleton<AccountStore>();
 builder.Services.AddSingleton<InviteStore>();
@@ -117,6 +125,25 @@ builder.Services.AddSignalR(o =>
 });
 
 var app = builder.Build();
+
+string? importResult = null;
+using (var scope = app.Services.CreateScope())
+{
+    var env = scope.ServiceProvider.GetRequiredService<IWebHostEnvironment>();
+    var dbFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<WebGwentDbContext>>();
+    using var db = dbFactory.CreateDbContext();
+    var appData = Path.Combine(env.ContentRootPath, "App_Data");
+    var force = app.Configuration.GetValue("Postgres:ForceJsonImport", false)
+                || args.Contains("--force-import-json");
+    importResult = JsonToPostgresImporter.ImportIfNeeded(db, appData, force);
+    app.Logger.LogInformation("Postgres import: {Result}", importResult);
+}
+
+if (args.Contains("--import-json-only"))
+{
+    Console.WriteLine(importResult);
+    return;
+}
 
 _ = app.Services.GetRequiredService<CustomContentStore>();
 _ = app.Services.GetRequiredService<AccountStore>();

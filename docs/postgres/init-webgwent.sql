@@ -1,0 +1,5 @@
+-- См. README.md
+-- Порядок на другом ПК / для GitHub:
+--   1) 00_create_database.sql  (на базе postgres)
+--   2) 01_schema.sql           (на базе webgwent)
+--   3) 02_seed_data.sql        (на базе webgwent)
